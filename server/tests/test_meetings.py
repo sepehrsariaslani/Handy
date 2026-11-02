@@ -283,3 +283,61 @@ def test_whisper_transcript_survives_unavailable_qwen(tmp_path):
         ).json()
         assert blocks["total"] == 1
         assert "تصمیم" in blocks["items"][0]
+
+
+def test_ollama_meeting_analysis_retries_without_json_grammar_on_501(tmp_path):
+    """Keep using the same Qwen model when MLX lacks constrained JSON mode."""
+    import asyncio
+    calls = []
+    def backend(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": [{"id": "qwen3.5:9b"}]})
+        payload = json.loads(request.content)
+        calls.append(payload)
+        if "response_format" in payload:
+            return httpx.Response(501, json={"error": "structured output is unavailable"})
+        return httpx.Response(200, json={"choices": [{"message": {"content":
+            '{"title":null,"meeting_date":null,"summary":"جلسه فارسی",'
+            '"decisions":[],"tasks":[],"open_questions":[]}'}}]})
+
+    settings = Settings(
+        api_key=KEY, db_path=tmp_path / "llm.db",
+        qwen_provider="ollama", qwen_base_url="http://127.0.0.1:11434/v1",
+        qwen_model="qwen3.5:9b", llm_enabled=True,
+    )
+    worker = QwenWorker(settings, transport=httpx.MockTransport(backend))
+    result = asyncio.run(worker.structured(
+        [{"role": "system", "content": "JSON only"},
+         {"role": "user", "content": "A Persian meeting"}],
+        max_tokens=2048, operation="meeting_analysis",
+    ))
+    assert result["summary"] == "جلسه فارسی"
+    assert len(calls) == 2
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in calls[1]
+    assert all(item["model"] == "qwen3.5:9b" for item in calls)
+    assert calls[0]["messages"] == calls[1]["messages"]
+
+
+def test_ollama_non_501_failure_never_retries_without_validation(tmp_path):
+    import asyncio
+    calls = []
+    def backend(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": [{"id": "qwen3.5:9b"}]})
+        calls.append(json.loads(request.content))
+        return httpx.Response(429)
+
+    settings = Settings(
+        api_key=KEY, db_path=tmp_path / "error.db",
+        qwen_provider="ollama", qwen_base_url="http://127.0.0.1:11434/v1",
+        qwen_model="qwen3.5:9b", llm_enabled=True,
+    )
+    worker = QwenWorker(settings, transport=httpx.MockTransport(backend))
+    from handy_server.workers import WorkerFailure
+    with pytest.raises(WorkerFailure):
+        asyncio.run(worker.structured(
+            [{"role": "system", "content": "JSON only"}],
+            max_tokens=100, operation="meeting_analysis",
+        ))
+    assert len(calls) == 1
