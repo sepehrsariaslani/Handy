@@ -185,3 +185,53 @@ class MemoryStore:
             if len(unique) >= limit:
                 break
         return unique
+
+
+    def resolve(self, citation_ids: list[str],
+                scope: str = "all", since: date | None = None,
+                until: date | None = None) -> list[dict]:
+        """Revalidate semantic/previous-turn refs against current documents.
+
+        Deleted notes, unfinished meetings and out-of-range dates must never
+        be disclosed through stale vectors or stored dialogue citations.
+        """
+        after = since.isoformat() if since else None
+        before = until.isoformat() if until else None
+        hits = []
+        with self.connect() as db:
+            for citation in citation_ids[:48]:
+                parts = citation.split(":")
+                if len(parts) != 3:
+                    continue
+                kind, document_id, source_id = parts
+                if not re.fullmatch(r"[0-9a-f]{32}", document_id):
+                    continue
+                if kind == "meeting" and scope in ("all","meetings"):
+                    row = db.execute("""SELECT s.text,s.speaker,s.start,j.created_at
+                        FROM meeting_segments s JOIN meeting_jobs j ON j.id=s.job_id
+                        WHERE s.job_id=? AND s.id=? AND j.status='completed'
+                          AND (? IS NULL OR substr(j.created_at,1,10)>=?)
+                          AND (? IS NULL OR substr(j.created_at,1,10)<=?)""",
+                        (document_id,source_id,after,after,before,before)).fetchone()
+                    if row:
+                        hits.append({
+                            "id":citation,"kind":"meeting","document_id":document_id,
+                            "source_id":source_id,"title":"Meeting "+row["created_at"][:10],
+                            "quote":row["text"][:1200],"speaker":row["speaker"],
+                            "start":row["start"],"created_at":row["created_at"],
+                        })
+                elif kind == "note" and scope in ("all","notes"):
+                    row = db.execute("""SELECT s.text,n.title,n.created_at
+                        FROM note_sources s JOIN notes n ON n.id=s.note_id
+                        WHERE n.id=? AND s.source_id=?
+                          AND (? IS NULL OR substr(n.created_at,1,10)>=?)
+                          AND (? IS NULL OR substr(n.created_at,1,10)<=?)""",
+                        (document_id,source_id,after,after,before,before)).fetchone()
+                    if row:
+                        hits.append({
+                            "id":citation,"kind":"note","document_id":document_id,
+                            "source_id":source_id,"title":row["title"],
+                            "quote":row["text"][:1200],"speaker":None,
+                            "start":None,"created_at":row["created_at"],
+                        })
+        return hits
