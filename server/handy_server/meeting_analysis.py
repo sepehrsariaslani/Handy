@@ -111,23 +111,40 @@ class QwenMeetingAnalyzer:
                 allowed,
             )
             partials.append(answer)
-        # Rolling hierarchical reduction: each request remains bounded even
-        # for many hours of transcript. Summaries carry their evidence IDs.
+        # Preserve the per-batch evidence instead of asking a reduction model
+        # to memorize hundreds of action items. Only the summary is reduced.
+        def unique(items):
+            seen = set()
+            output = []
+            for item in items:
+                key = (item.text.strip().casefold(), tuple(item.source_ids))
+                if key not in seen:
+                    output.append(item)
+                    seen.add(key)
+            return output
+
+        decisions = unique(item for part in partials for item in part.decisions)
+        tasks = unique(item for part in partials for item in part.tasks)
+        questions = unique(item for part in partials for item in part.open_questions)
+        summaries = [part.summary for part in partials if part.summary.strip()]
+        # Reduce only summaries in bounded batches. Never truncate a JSON
+        # document mid-character; evidence remains intact from the map step.
         all_ids = {entry["id"] for entry in segments}
-        while len(partials) > 1:
-            next_level: list[MeetingAnalysis] = []
-            for idx in range(0, len(partials), 5):
-                group = partials[idx:idx+5]
-                serialized = [part.model_dump(mode="json") for part in group]
-                compact = json.dumps(serialized, ensure_ascii=False)
-                # Qwen receives no untrusted raw transcript in reduce stage.
+        while len(summaries) > 1:
+            reduced = []
+            for idx in range(0, len(summaries), 4):
+                group = summaries[idx:idx + 4]
+                content = json.dumps([summary[:1800] for summary in group], ensure_ascii=False)
                 result = await self._request(
-                    "Combine these grounded partial meeting notes into one concise "
-                    "summary without inventing any facts or source IDs. "
-                    "Preserve tasks and decisions with their original citations:\n"
-                    + compact[:14000],
+                    "Write a concise combined summary of these already grounded "
+                    "meeting summaries. Return decisions/tasks/questions as empty "
+                    "arrays; they are stored separately. Summaries:\n" + content,
                     all_ids,
                 )
-                next_level.append(result)
-            partials = next_level
-        return partials[0]
+                reduced.append(result.summary)
+            summaries = reduced
+        return MeetingAnalysis(
+            summary=summaries[0] if summaries else "",
+            decisions=decisions, tasks=tasks, open_questions=questions,
+        )
+
