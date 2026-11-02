@@ -118,6 +118,10 @@ export const MeetingMode = () => {
     () => [...new Set(job?.transcript?.map((part) => part.speaker) ?? [])],
     [job?.transcript],
   );
+  const speakerOptions = useMemo(
+    () => ["Unknown", ...speakers.filter((id) => id !== "Unknown")],
+    [speakers],
+  );
 
   // The editable names are persisted per meeting, not just in React state.
   useEffect(() => {
@@ -1007,27 +1011,27 @@ export const MeetingMode = () => {
                     .filter((speaker) => speaker !== "Unknown")
                     .map((speaker) => (
                       <label
-                      key={speaker}
-                      className="text-xs flex items-center gap-2"
-                    >
-                      {speaker}
-                      <input
-                        className="rounded-lg border border-line bg-transparent px-2 py-1"
-                        aria-label={speaker}
-                        placeholder={t("meeting.speakerPlaceholder")}
-                        value={speakerNames[speaker] || ""}
-                        onChange={(event) =>
-                          setSpeakerNames((current) => ({
-                            ...current,
-                            [speaker]: event.target.value,
-                          }))
-                        }
-                        onBlur={() => void saveSpeakerName(speaker)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
-                        disabled={job.status !== "completed"}
-                      />
+                        key={speaker}
+                        className="text-xs flex items-center gap-2"
+                      >
+                        {speaker}
+                        <input
+                          className="rounded-lg border border-line bg-transparent px-2 py-1"
+                          aria-label={speaker}
+                          placeholder={t("meeting.speakerPlaceholder")}
+                          value={speakerNames[speaker] || ""}
+                          onChange={(event) =>
+                            setSpeakerNames((current) => ({
+                              ...current,
+                              [speaker]: event.target.value,
+                            }))
+                          }
+                          onBlur={() => void saveSpeakerName(speaker)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") event.currentTarget.blur();
+                          }}
+                          disabled={job.status !== "completed"}
+                        />
                       </label>
                     ))}
                 </div>
@@ -1049,13 +1053,11 @@ export const MeetingMode = () => {
                           void correctSpeaker(part, event.target.value)
                         }
                       >
-                        {[...new Set(["Unknown", ...speakers, part.speaker])].map(
-                          (id) => (
-                            <option key={id} value={id}>
-                              {speakerNames[id] || id}
-                            </option>
-                          ),
-                        )}
+                        {speakerOptions.map((id) => (
+                          <option key={id} value={id}>
+                            {speakerNames[id] || id}
+                          </option>
+                        ))}
                         <option value="__new">
                           {t("meeting.newSpeaker", {
                             defaultValue: "+ New speaker",
