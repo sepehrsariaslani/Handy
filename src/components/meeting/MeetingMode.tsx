@@ -19,9 +19,11 @@ import {
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { RecordingPill } from "@/components/ui/RecordingPill";
+import { HandyAiClient } from "@/lib/ai/client";
 
 type MeetingInfo = {
   id: string;
+  kind?: "meeting" | "note";
   started_at: string;
   title: string | null;
   meeting_date: string | null;
@@ -52,6 +54,7 @@ type Insights = {
 };
 type MeetingJob = {
   id: string;
+  clean_text?: string | null;
   title?: string | null;
   meeting_date?: string | null;
   status: "queued" | "processing" | "completed" | "failed";
@@ -99,6 +102,9 @@ export const MeetingMode = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sourcePreview, setSourcePreview] = useState<Utterance | null>(null);
+  const [polishedParts, setPolishedParts] = useState<string[]>([]);
+  const [polishedTotal, setPolishedTotal] = useState(0);
+  const [polishedLoading, setPolishedLoading] = useState(false);
   const selected =
     meetings.find((meeting) => meeting.id === selectedId) ?? null;
   const recording = Boolean(currentId && currentId === selectedId);
@@ -109,8 +115,8 @@ export const MeetingMode = () => {
 
   const refresh = useCallback(async () => {
     const result = await invoke<MeetingInfo[]>("list_meetings");
-    setMeetings(result);
-    const active = result.find((item) => item.status === "recording");
+    setMeetings(result.filter((item) => item.kind !== "note"));
+    const active = result.filter((item) => item.kind !== "note").find((item) => item.status === "recording");
     setCurrentId(active?.id ?? null);
     if (active) {
       setSelectedId((old) => old ?? active.id);
@@ -208,6 +214,8 @@ export const MeetingMode = () => {
     setVisibleCount(150);
     setTranscriptOpen(false);
     setSourcePreview(null);
+    setPolishedParts([]);
+    setPolishedTotal(0);
   };
 
   const upload = async (meeting: MeetingInfo) => {
@@ -376,6 +384,21 @@ export const MeetingMode = () => {
       toast.error(readError(error));
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  const loadPolished = async () => {
+    if (!job || !authToken || polishedLoading) return;
+    setPolishedLoading(true);
+    try {
+      const client = new HandyAiClient(serverUrl, authToken);
+      const result = await client.getCleanedTranscript(job.id, polishedParts.length, 10);
+      setPolishedParts((current) => [...current, ...result.items]);
+      setPolishedTotal(result.total);
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setPolishedLoading(false);
     }
   };
 
@@ -710,6 +733,22 @@ export const MeetingMode = () => {
                 </button>
               )}
             </div>
+          )}
+          {job?.status === "completed" && job.clean_text && (
+            <section className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold">
+                {t("meeting.polishedTranscript", { defaultValue: "Clean transcript" })}
+              </h3>
+              <p dir="auto" className="text-sm whitespace-pre-wrap leading-relaxed">
+                {(polishedParts.length ? polishedParts : [job.clean_text]).join("\\n\\n")}
+              </p>
+              {(polishedParts.length === 0 || polishedParts.length < polishedTotal) && (
+                <button type="button" disabled={polishedLoading} onClick={() => void loadPolished()}
+                  className="w-fit text-sm border border-line rounded-lg px-3 py-2 disabled:opacity-50">
+                  {t("meeting.showMore")}
+                </button>
+              )}
+            </section>
           )}
           {job?.insights && (
             <div className="flex flex-col gap-4">
