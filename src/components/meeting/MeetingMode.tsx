@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { HandyAiClient } from "@/lib/ai/client";
 
 type MeetingInfo = {
@@ -86,6 +87,8 @@ export const MeetingMode = () => {
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
   // Token stays in memory; never store it in web storage or application logs.
   const [apiKey, setApiKey] = useState("");
+  const localApiKey = useLocalAiApiKey(serverUrl);
+  const authToken = apiKey.trim() || localApiKey;
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<MeetingJob | null>(null);
   const [visibleCount, setVisibleCount] = useState(150);
@@ -110,13 +113,13 @@ export const MeetingMode = () => {
   }, [refresh]);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId || !authToken) return;
     let alive = true;
     const load = async () => {
       try {
         const result = await invoke<MeetingJob>("get_meeting_job", {
           serverUrl,
-          apiKey: apiKey || null,
+          apiKey: authToken || null,
           jobId,
         });
         if (alive)
@@ -140,7 +143,7 @@ export const MeetingMode = () => {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [apiKey, jobId, job?.status, serverUrl]);
+  }, [authToken, jobId, job?.status, serverUrl]);
 
   const start = async () => {
     if (!consent || busy) return;
@@ -198,7 +201,7 @@ export const MeetingMode = () => {
       const result = await invoke<MeetingJob>("submit_meeting", {
         id: meeting.id,
         serverUrl,
-        apiKey: apiKey || null,
+        apiKey: authToken || null,
       });
       setJobId(result.id);
       setJob(result);
@@ -216,7 +219,7 @@ export const MeetingMode = () => {
     try {
       const result = await invoke<MeetingJob>("retry_meeting_job", {
         serverUrl,
-        apiKey: apiKey || null,
+        apiKey: authToken || null,
         jobId,
       });
       setJob(result);
@@ -228,10 +231,10 @@ export const MeetingMode = () => {
   };
 
   const importAsNote = async () => {
-    if (!job || !job.insights || !apiKey || busy) return;
+    if (!job || !job.insights || !authToken || busy) return;
     setBusy(true);
     try {
-      const client = new HandyAiClient(serverUrl, apiKey);
+      const client = new HandyAiClient(serverUrl, authToken);
       await client.importMeetingNote(job.id);
       toast.success(t("notes.imported"));
     } catch (error) {
@@ -242,11 +245,11 @@ export const MeetingMode = () => {
   };
 
   const importAsTasks = async () => {
-    if (!job || job.status !== "completed" || !job.insights || !apiKey || busy)
+    if (!job || job.status !== "completed" || !job.insights || !authToken || busy)
       return;
     setBusy(true);
     try {
-      const client = new HandyAiClient(serverUrl, apiKey);
+      const client = new HandyAiClient(serverUrl, authToken);
       const imported = await client.importMeetingTasks(job.id);
       toast.success(t("tasks.imported", { count: imported.created }));
     } catch (error) {
@@ -267,7 +270,7 @@ export const MeetingMode = () => {
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
         serverUrl,
-        apiKey: apiKey || null,
+        apiKey: authToken || null,
         jobId: job.id,
         offset: count,
         limit: 150,
@@ -311,7 +314,7 @@ export const MeetingMode = () => {
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
         serverUrl,
-        apiKey: apiKey || null,
+        apiKey: authToken || null,
         jobId: job.id,
         offset: ordinal - 1,
         limit: 1,
@@ -440,7 +443,10 @@ export const MeetingMode = () => {
             className="rounded-lg border border-line bg-transparent px-3 py-2"
             type="url"
             value={serverUrl}
-            onChange={(event) => setServerUrl(event.target.value)}
+            onChange={(event) => {
+              setServerUrl(event.target.value);
+              setApiKey("");
+            }}
             onBlur={() => {
               try {
                 setServerUrl(saveServerUrl(serverUrl));
@@ -457,6 +463,7 @@ export const MeetingMode = () => {
             type="password"
             autoComplete="off"
             value={apiKey}
+            placeholder={localApiKey ? "Local API key detected" : undefined}
             onChange={(event) => setApiKey(event.target.value)}
           />
         </label>
@@ -561,7 +568,7 @@ export const MeetingMode = () => {
           {job.status === "completed" && job.insights && (
             <button
               type="button"
-              disabled={busy || !apiKey}
+              disabled={busy || !authToken}
               onClick={() => void importAsNote()}
               className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
             >
@@ -571,7 +578,7 @@ export const MeetingMode = () => {
           {job.status === "completed" && job.insights && (
             <button
               type="button"
-              disabled={busy || !apiKey}
+              disabled={busy || !authToken}
               onClick={() => void importAsTasks()}
               className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
             >
