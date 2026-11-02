@@ -10,12 +10,14 @@ import {
   Mic,
   RadioTower,
   BookOpenText,
+  BookOpenCheck,
 } from "lucide-react";
 import HandyTextLogo from "./icons/HandyTextLogo";
 import HandyHand from "./icons/HandyHand";
 import { MeetingMode } from "./meeting/MeetingMode";
 import { LiveMode } from "./live/LiveMode";
 import { NotesMode } from "./notes/NotesMode";
+import { MemoryMode } from "./memory/MemoryMode";
 import { useSettings } from "../hooks/useSettings";
 import {
   GeneralSettings,
@@ -61,6 +63,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.notes",
     icon: BookOpenText,
     component: NotesMode,
+    enabled: () => true,
+  },
+  memory: {
+    labelKey: "sidebar.memory",
+    icon: BookOpenCheck,
+    component: MemoryMode,
     enabled: () => true,
   },
   meeting: {
