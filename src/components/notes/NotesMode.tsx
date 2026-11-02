@@ -100,8 +100,16 @@ export function NotesMode() {
     )
       .then((rows) => {
         if (!active) return;
-        setPendingNotes(rows.filter((item) => item.kind === "note" && item.status === "ready" &&
-          !(item as { remote_job_id?: string | null }).remote_job_id).map((item) => item.id));
+        setPendingNotes(
+          rows
+            .filter(
+              (item) =>
+                item.kind === "note" &&
+                item.status === "ready" &&
+                !(item as { remote_job_id?: string | null }).remote_job_id,
+            )
+            .map((item) => item.id),
+        );
         const pending = rows.find(
           (item) => item.kind === "note" && item.status === "recording",
         );
@@ -253,7 +261,9 @@ export function NotesMode() {
     setLiveStatus("saving");
     try {
       const job = await invoke<{ id: string }>("submit_meeting", {
-        id, serverUrl, apiKey: authToken,
+        id,
+        serverUrl,
+        apiKey: authToken,
       });
       setJobId(job.id);
       setPendingNotes((current) => current.filter((item) => item !== id));
@@ -396,14 +406,27 @@ export function NotesMode() {
       {!editorExpanded && pendingNotes.length > 0 && (
         <section className="rounded-xl border border-line p-3 flex flex-col gap-2">
           <h2 className="text-sm font-medium">
-            {t("notes.pendingRecordings", { defaultValue: "Saved recordings awaiting sync" })}
+            {t("notes.pendingRecordings", {
+              defaultValue: "Saved recordings awaiting sync",
+            })}
           </h2>
           {pendingNotes.map((id, index) => (
-            <div key={id} className="flex items-center justify-between gap-2 text-sm">
-              <span>{t("notes.voiceTitle")} {index + 1}</span>
-              <button type="button" disabled={!client || busy} onClick={() => void retrySavedRecording(id)}
-                className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
-                {t("meeting.retrySync", { defaultValue: "Resume transcription" })}
+            <div
+              key={id}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <span>
+                {t("notes.voiceTitle")} {index + 1}
+              </span>
+              <button
+                type="button"
+                disabled={!client || busy}
+                onClick={() => void retrySavedRecording(id)}
+                className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
+              >
+                {t("meeting.retrySync", {
+                  defaultValue: "Resume transcription",
+                })}
               </button>
             </div>
           ))}
