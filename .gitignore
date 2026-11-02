@@ -45,3 +45,10 @@ result
 
 # Python bytecode (scripts/)
 __pycache__/
+
+# Local AI server state, model links and compiled tools (never commit weights)
+server/.venv/
+server/data/
+server/models/
+server/tools/
+server/handy_ai_server.egg-info/
