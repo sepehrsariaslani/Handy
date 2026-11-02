@@ -16,11 +16,7 @@ const errorText = (error: unknown) =>
 
 const timecode = (seconds: number) => {
   const total = Math.floor(seconds);
-  return [
-    Math.floor(total / 3600),
-    Math.floor((total % 3600) / 60),
-    total % 60,
-  ]
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
     .map((part) => String(part).padStart(2, "0"))
     .join(":");
 };
@@ -100,9 +96,7 @@ export function MemoryMode() {
       <div className="flex justify-between flex-wrap items-center gap-2">
         <strong className="text-sm font-medium">{source.title}</strong>
         <span className="text-xs text-ink-3">
-          {source.kind === "meeting"
-            ? t("memory.meeting")
-            : t("memory.note")}
+          {source.kind === "meeting" ? t("memory.meeting") : t("memory.note")}
           {" · "}
           {source.created_at.slice(0, 10)}
         </span>
@@ -114,9 +108,7 @@ export function MemoryMode() {
         {source.speaker && source.speaker !== "Unknown"
           ? source.speaker + " · "
           : ""}
-        {source.start !== null
-          ? timecode(source.start) + " · "
-          : ""}
+        {source.start !== null ? timecode(source.start) + " · " : ""}
         {source.source_id}
         {selectedCitations.has(source.id) && (
           <span className="ms-2 font-semibold text-logo-primary">
@@ -225,7 +217,8 @@ export function MemoryMode() {
             disabled={!client || busy || question.trim().length < 3}
             className="flex gap-2 items-center bg-logo-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
           >
-            <Sparkles size={16} /> {busy ? t("memory.working") : t("memory.ask")}
+            <Sparkles size={16} />{" "}
+            {busy ? t("memory.working") : t("memory.ask")}
           </button>
           <button
             type="button"
@@ -243,8 +236,8 @@ export function MemoryMode() {
           <h2 className="font-semibold">{t("memory.result")}</h2>
           {(result.applied_since || result.applied_until) && (
             <p className="text-xs text-ink-3">
-              {t("memory.appliedPeriod")}:{" "}
-              {result.applied_since ?? "…"} — {result.applied_until ?? "…"}
+              {t("memory.appliedPeriod")}: {result.applied_since ?? "…"} —{" "}
+              {result.applied_until ?? "…"}
             </p>
           )}
           {result.status === "answered" && result.answer ? (

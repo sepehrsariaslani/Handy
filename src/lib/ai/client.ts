@@ -178,5 +178,4 @@ export class HandyAiClient {
       body: JSON.stringify(body),
     });
   }
-
 }

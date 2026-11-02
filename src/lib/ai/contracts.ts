@@ -128,7 +128,6 @@ export interface AiNotesPage {
   total: number;
 }
 
-
 /** Phase-7 source-grounded retrieval across prior meetings and notes. */
 export type AiMemoryScope = "all" | "notes" | "meetings";
 export type AiMemoryStatus = "answered" | "search_only" | "not_found";

@@ -11,7 +11,7 @@ return citations to retrieved evidence, the answer is withheld.
 2. Enter the private server URL and bearer API key; the key is in UI memory
    only, not browser storage.
 3. Ask a question in Persian or English, e.g.:
-   *"علی در جلسه هفته گذشته چه کاری را قبول کرده بود؟"*
+   _"علی در جلسه هفته گذشته چه کاری را قبول کرده بود؟"_
 4. Optionally choose meetings, notes, or both. Optional UTC creation-date
    filters override any relative dates in the question.
 5. Press **Ask with Qwen** to retrieve relevant snippets and generate a
@@ -20,6 +20,7 @@ return citations to retrieved evidence, the answer is withheld.
    The UI can jump to the exact retrieved evidence record.
 
 Recognized date phrases (interpreted relative to the **server's UTC date**):
+
 - Persian: "هفته گذشته", "هفته قبل", "این هفته", "دیروز", "امروز".
 - English: "last week", "this week", "yesterday", "today".
 - Weeks mean Monday through Sunday, and the period used is displayed to
@@ -51,10 +52,11 @@ Notes are searched with the existing `notes_fts` index. The server creates
 `meeting_memory_fts` for transcription segments, backfills old completed
 recordings, and uses SQLite triggers to keep the index updated as new
 transcriptions arrive or speakers change. Source IDs use stable patterns:
+
 - `meeting:{job_id}:{utterance_id}`
 - `note:{note_id}:{source_id}`
 
-Source snippets are sent to Qwen as *untrusted data* with a bounded context.
+Source snippets are sent to Qwen as _untrusted data_ with a bounded context.
 The response must be a JSON object with an answer and exact source IDs.
 Unknown/hallucinated IDs are discarded. A response with no valid citations
 is **not displayed as an answer**. The raw meeting audio is never sent to
