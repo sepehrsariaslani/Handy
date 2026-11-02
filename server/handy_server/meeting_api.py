@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 
 from .meeting_processing import validated_duration
 from .schemas import MeetingJob
+from .workers import WorkerUnavailable
 
 REF = re.compile(r"^[A-Za-z0-9-]{1,80}$")
 ID = re.compile(r"^[a-f0-9]{32}$")
@@ -23,9 +24,15 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
         meeting_id: str | None = Form(default=None),
         language: str | None = Form(default=None),
         kind: Literal["meeting", "note"] = Form(default="meeting"),
+        asr_model_id: str | None = Form(default=None, max_length=120),
         title: str | None = Form(default=None, max_length=180),
         meeting_date: date | None = Form(default=None),
     ):
+        if asr_model_id is not None:
+            try:
+                processor.runtime.validate_asr_model(asr_model_id)
+            except WorkerUnavailable as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
         if meeting_id is not None and not REF.fullmatch(meeting_id):
             raise HTTPException(status_code=422, detail="Invalid meeting reference")
         if language is not None and len(language) > 35:
@@ -57,7 +64,7 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
                 raise HTTPException(status_code=422, detail="Invalid 16kHz mono PCM16 meeting WAV") from None
             created = await __import__("asyncio").to_thread(
                 store.create, location, duration, meeting_id, language,
-                title, meeting_date.isoformat() if meeting_date else None, kind
+                title, meeting_date.isoformat() if meeting_date else None, kind, asr_model_id
             )
             if created["audio_path"] != str(location):
                 location.unlink(missing_ok=True)
