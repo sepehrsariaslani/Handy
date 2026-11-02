@@ -20,6 +20,8 @@ pub struct MeetingInfo {
     pub id: String,
     #[serde(default = "default_meeting_kind")]
     pub kind: String,
+    #[serde(default)]
+    pub language: Option<String>,
     pub started_at: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -219,6 +221,7 @@ pub fn start_meeting(
     title: Option<String>,
     meeting_date: Option<String>,
     kind: Option<String>,
+    language: Option<String>,
 ) -> Result<MeetingInfo, String> {
     let kind = kind.unwrap_or_else(default_meeting_kind);
     if kind != "meeting" && kind != "note" {
@@ -247,9 +250,25 @@ pub fn start_meeting(
     let directory = meeting_dir(&app)?.join(&id);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let audio_path = directory.join("audio.wav");
+    // Explicit language always wins. Otherwise reuse the language selected
+    // for standard dictation, rather than re-detecting each recording.
+    let requested_language = language
+        .filter(|code| code != "auto" && !code.is_empty())
+        .or_else(|| {
+            let selected = crate::settings::get_settings(&app).selected_language;
+            if selected == "auto" || selected.is_empty() {
+                None
+            } else {
+                Some(selected)
+            }
+        });
+    let language = requested_language
+        .filter(|code| code.len() <= 12
+            && code.chars().all(|c| c.is_ascii_alphabetic() || c == '-'));
     let mut info = MeetingInfo {
         id,
         kind,
+        language,
         started_at: Utc::now().to_rfc3339(),
         title,
         meeting_date,
@@ -532,6 +551,7 @@ pub async fn submit_meeting(
     let mut request = http.post(root.clone()).json(&serde_json::json!({
         "meeting_id": id,
         "kind": info.kind,
+        "language": info.language,
         "total_bytes": audio_size,
         "title": info.title,
         "meeting_date": info.meeting_date,
