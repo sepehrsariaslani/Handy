@@ -40,3 +40,17 @@ Use `http://127.0.0.1:8765` in the Meeting tab for a local service. For a differ
 - Language auto-detection in mixed-language sessions, overlapping speakers, and timestamps can be inaccurate.
 - No mobile client, always-on daily capture, global long-term memory search, or automatic todo sync is shipped by this change.
 - This is **not** a deployed service; run it on your own server and check the server logs. The processing endpoint is only invoked by explicit user action.
+
+## Checks
+
+```sh
+# From services/meeting, after installing dependencies:
+pip install pytest
+python -m py_compile app.py
+pytest -q test_app.py
+# From repository root, with Bun/Rust dependencies installed:
+bun run build
+cd src-tauri && cargo check
+```
+
+These commands are validation steps for your own environment; they have not been executed on a connected runtime by this change.
