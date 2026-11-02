@@ -65,9 +65,11 @@ class MeetingProcessor:
                 try:
                     await self.process(job)
                 except (WorkerUnavailable, WorkerFailure, ValueError, OSError) as exc:
+                    LOG.warning("meeting.failed job=%s error_type=%s", job["id"], type(exc).__name__)
                     await asyncio.to_thread(self.store.fail, job["id"],
                                             f"{type(exc).__name__}: {str(exc)[:120]}")
                 except Exception as exc:
+                    LOG.exception("meeting.unexpected_failure job=%s", job["id"])
                     await asyncio.to_thread(self.store.fail, job["id"],
                                             "Processing failed (" + type(exc).__name__ + ")")
             else:
@@ -93,10 +95,21 @@ class MeetingProcessor:
             window, actual = await asyncio.to_thread(
                 wav_window, audio_path, position, min(RATE * WINDOW_SECONDS, limit_frames-position)
             )
+            window_started = monotonic()
+            LOG.info(
+                "meeting.asr.start job=%s offset_seconds=%.1f duration_seconds=%.1f requested_language=%s backend=%s",
+                job_id, position / RATE, actual / RATE, job["language"] or "auto",
+                self.runtime.settings.asr_backend,
+            )
             try:
                 segments, language = await self.runtime.transcribe(window, job["language"])
             finally:
                 window.unlink(missing_ok=True)
+            LOG.info(
+                "meeting.asr.done job=%s segments=%d detected_language=%s elapsed_ms=%d",
+                job_id, len(segments), language or "unknown",
+                int((monotonic() - window_started) * 1000),
+            )
             start_offset = position / RATE
             utterances = []
             for segment in segments:
@@ -168,6 +181,7 @@ class MeetingProcessor:
 
         polished = []
         can_clean = await self.runtime.llm_ready()
+        LOG.info("meeting.polishing job=%s blocks=%d qwen_ready=%s", job_id, len(chunks), can_clean)
         for index, text in enumerate(chunks):
             if can_clean:
                 try:
@@ -179,6 +193,11 @@ class MeetingProcessor:
                         ),
                     ))
                     polished.append(edited.clean_text)
+                    LOG.info(
+                        "meeting.cleanup job=%s block=%d changed=%s review_required=%s warnings=%d",
+                        job_id, index, edited.clean_text != text,
+                        edited.review_required, len(edited.warnings),
+                    )
                 except (WorkerFailure, WorkerUnavailable, ValueError) as exc:
                     LOG.warning("meeting.cleanup_fallback job=%s block=%d error=%s",
                                 job_id, index, type(exc).__name__)
