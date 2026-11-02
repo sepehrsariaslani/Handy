@@ -3,6 +3,7 @@
 Audio and AI analysis are separate: creating/editing/searching notes needs no GPU.
 """
 from datetime import datetime, timezone
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import re
@@ -59,11 +60,12 @@ class NoteStore:
                 for index, text in enumerate(chunks[:1000], 1)]
 
     def create(self, title: str, content: str, meeting_id: str | None = None,
-               sources: list[dict] | None = None) -> dict:
+               sources: list[dict] | None = None,
+               connection: sqlite3.Connection | None = None) -> dict:
         note_id = uuid4().hex
         timestamp = utc_now()
         sources = sources if sources is not None else self.automatic_sources(content)
-        with self.connect() as db:
+        with (nullcontext(connection) if connection is not None else self.connect()) as db:
             db.execute("""INSERT INTO notes
                 (id,title,content,source_meeting_id,version,created_at,updated_at)
                 VALUES(?,?,?,?,1,?,?)""", (note_id, title, content, meeting_id, timestamp, timestamp))
@@ -71,7 +73,7 @@ class NoteStore:
                 VALUES(?,?,?)""", [(note_id, row["id"], row["text"]) for row in sources])
             db.execute("INSERT INTO notes_fts(note_id,title,content) VALUES(?,?,?)",
                        (note_id, title, content))
-        return self.get(note_id)
+        return {"id": note_id} if connection is not None else self.get(note_id)
 
     def get(self, note_id: str) -> dict | None:
         with self.connect() as db:
