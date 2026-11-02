@@ -127,6 +127,57 @@ def test_qwen_http_adapter_and_thinking_disabled(tmp_path):
     assert calls == ["/v1/models", "/v1/chat/completions"]
 
 
+def test_qwen_ollama_openai_adapter_disables_thinking(tmp_path):
+    """Ollama expects reasoning_effort, not the vLLM chat-template extension."""
+    import json
+
+    def handler(req: httpx.Request):
+        if req.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen3.5:9b"}]})
+        payload = json.loads(req.content)
+        assert payload["model"] == "qwen3.5:9b"
+        assert payload["reasoning_effort"] == "none"
+        assert "chat_template_kwargs" not in payload
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "فردا جلسه داریم."}}]}
+        )
+
+    config = Settings(
+        api_key=TOKEN, db_path=tmp_path / "ollama.db", llm_enabled=True,
+        qwen_base_url="http://127.0.0.1:11434/v1", qwen_model="qwen3.5:9b",
+    )
+    result = asyncio.run(
+        QwenWorker(config, transport=httpx.MockTransport(handler)).cleanup(
+            CleanupRequest(text="فردا جلسه داریم.")
+        )
+    )
+    assert result.clean_text == "فردا جلسه داریم."
+
+
+def test_ollama_provider_override_for_custom_port(tmp_path):
+    """Users can run Ollama on a custom port without vLLM parameters."""
+    import json
+
+    def handler(req: httpx.Request):
+        if req.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen3.5:9b"}]})
+        payload = json.loads(req.content)
+        assert payload["reasoning_effort"] == "none"
+        assert "chat_template_kwargs" not in payload
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "سلام."}}]}
+        )
+
+    config = Settings(
+        api_key=TOKEN, db_path=tmp_path / "custom-port.db", llm_enabled=True,
+        qwen_base_url="http://127.0.0.1:12345/v1", qwen_model="qwen3.5:9b",
+        qwen_provider="ollama",
+    )
+    worker = QwenWorker(config, transport=httpx.MockTransport(handler))
+    result = asyncio.run(worker.cleanup(CleanupRequest(text="سلام.")))
+    assert result.clean_text == "سلام."
+
+
 def test_hallucinated_numbers_cause_rollback(tmp_path):
     def handler(req):
         if req.url.path.endswith("/models"):
