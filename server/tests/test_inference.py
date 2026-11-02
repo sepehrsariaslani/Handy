@@ -51,7 +51,7 @@ def client(tmp_path):
 def test_models_report_readiness_without_claiming_streaming(client):
     processing = client.get("/v1/capabilities", headers=AUTH).json()["processing"]
     assert processing == {"asr": True, "llm": True,
-                          "speaker_diarization": False, "streaming": False}
+                          "speaker_diarization": False, "streaming": True}
     model = client.get("/v1/models/status", headers=AUTH).json()
     assert model["llm_model"] == "Qwen/Qwen3.5-9B"
     assert model["asr_ready"] and model["llm_ready"]

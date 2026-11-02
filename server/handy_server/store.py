@@ -57,3 +57,14 @@ class SessionStore:
                 "SELECT * FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
         return SessionRecord.model_validate(dict(row)) if row else None
+
+    def set_status(self, session_id: str, new_status: str) -> None:
+        """Update the session lifecycle without changing its stable identity."""
+        if new_status not in {"recording", "completed", "failed"}:
+            raise ValueError("Unsupported session status")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?", (new_status, session_id)
+            )
+            if cursor.rowcount != 1:
+                raise KeyError("Session not found")

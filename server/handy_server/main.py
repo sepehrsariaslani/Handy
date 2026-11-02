@@ -1,7 +1,7 @@
 """Authenticated Handy AI API: offline metadata plus optional self-hosted GPU workers.
 
-Phase 2 provides bounded, non-streaming transcription and text cleanup. Meeting
-analysis and incremental streaming intentionally remain separate phases.
+Phase 3 adds resumable WebSocket PCM streaming while keeping the
+non-streaming API and local desktop recording path intact.
 """
 from contextlib import asynccontextmanager
 import hmac
@@ -26,6 +26,7 @@ from .schemas import (
     TranscriptionResponse,
 )
 from .store import SessionStore
+from .streaming import attach_stream_routes
 from .workers import InferenceRuntime, WorkerFailure, WorkerUnavailable
 
 bearer = HTTPBearer(auto_error=False)
@@ -51,8 +52,8 @@ def create_app(
 
     app = FastAPI(
         title="Handy AI API",
-        version="0.2.0",
-        description="Whisper Large V3 + Qwen3.5-9B (phase 2)",
+        version="0.3.0",
+        description="Whisper Large V3 + Qwen3.5-9B, resumable PCM stream",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -88,7 +89,7 @@ def create_app(
                 "asr": await models.asr_ready(),
                 "llm": await models.llm_ready(),
                 "speaker_diarization": False,
-                "streaming": False,
+                "streaming": await models.asr_ready(),
             }
         )
 
@@ -200,6 +201,7 @@ def create_app(
     def retry_meeting_job(job_id: str) -> None:
         raise HTTPException(status_code=501, detail="Meeting workers are not configured")
 
+    attach_stream_routes(app, config, store, models, require_auth)
     return app
 
 

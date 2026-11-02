@@ -7,7 +7,7 @@ import re
 import tempfile
 import wave
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from .schemas import CleanupRequest, Mode, Tone
 from .stream_store import (
@@ -63,7 +63,7 @@ async def process_chunk(session_id: str, sequence: int, store: StreamStore,
         tmp_path.unlink(missing_ok=True)
 
 
-def attach_stream_routes(app: FastAPI, config, sessions, runtime) -> None:
+def attach_stream_routes(app: FastAPI, config, sessions, runtime, require_auth) -> None:
     store = StreamStore(Path(config.db_path))
     locks: dict[str, asyncio.Lock] = {}
 
@@ -75,18 +75,12 @@ def attach_stream_routes(app: FastAPI, config, sessions, runtime) -> None:
             raise HTTPException(status_code=404, detail="Session not found")
         return entry
 
-    # Authorization for this HTTP route is provided by the existing dependency.
-    # This helper is called only by a route with dependencies=[Depends(require_auth)].
-    def register_state_route(require_auth):
-        from fastapi import Depends
-        @app.get("/v1/sessions/{session_id}/stream-state", dependencies=[Depends(require_auth)])
-        def state(session_id: str, after_sequence: int = -1, limit: int = 100):
-            safe_session(session_id)
-            if after_sequence < -1 or limit < 1 or limit > 200:
-                raise HTTPException(status_code=422, detail="Invalid pagination")
-            return store.state(session_id, after_sequence, limit)
-
-    app.state.register_stream_state = register_state_route
+    @app.get("/v1/sessions/{session_id}/stream-state", dependencies=[Depends(require_auth)])
+    def state(session_id: str, after_sequence: int = -1, limit: int = 100):
+        safe_session(session_id)
+        if after_sequence < -1 or limit < 1 or limit > 200:
+            raise HTTPException(status_code=422, detail="Invalid pagination")
+        return store.state(session_id, after_sequence, limit)
 
     @app.websocket("/v1/stream/{session_id}")
     async def stream(websocket: WebSocket, session_id: str):
