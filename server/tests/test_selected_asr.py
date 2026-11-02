@@ -199,3 +199,80 @@ def test_slash_ids_cannot_escape_local_asr_registry(tmp_path):
     assert asr.selected_path(WHISPER_ID).is_file()
     assert asr.selected_path(QWEN_ID).is_file()
     assert registry_name(WHISPER_ID) != registry_name(QWEN_ID)
+
+
+def test_native_handy_reuses_desktop_transcription_manager(tmp_path, monkeypatch):
+    """The Meeting path executes the SAME headless native pipeline as dictation."""
+    from handy_server.workers import NativeHandyWorker
+    settings = setup(tmp_path)
+    executable = tmp_path / "handy"
+    executable.write_text("#!/bin/sh\\nexit 0\\n")
+    executable.chmod(0o700)
+    from dataclasses import replace
+    settings = replace(settings, asr_backend="native_handy", native_handy_path=executable)
+    audio = tmp_path / "speech.wav"
+    audio.write_bytes(wav())
+    invoked = []
+
+    def native(command, **kwargs):
+        invoked.append(command)
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "model": WHISPER_ID,
+            "text": "این همان متن اصلاح شده توسط موتور اصلی Handy است.",
+            "bound_backend": "metal",
+        }), stderr="")
+
+    monkeypatch.setattr("handy_server.workers.subprocess.run", native)
+    worker = NativeHandyWorker(settings)
+    worker.initialize()
+    assert worker.ready
+    segments, reported_language = worker.transcribe_file(audio, "fa", WHISPER_ID)
+    assert reported_language is None
+    assert segments[0].raw_text == "این همان متن اصلاح شده توسط موتور اصلی Handy است."
+    assert segments[0].start == 0
+    assert segments[0].end == 2
+    assert invoked == [[
+        str(executable), "--transcribe-file", str(audio),
+        "--model", WHISPER_ID, "--json",
+    ]]
+
+
+def test_native_asr_missing_executable_never_silently_falls_back(tmp_path):
+    from handy_server.workers import NativeHandyWorker, WorkerUnavailable
+    from dataclasses import replace
+    import pytest
+    settings = replace(
+        setup(tmp_path), asr_backend="native_handy",
+        native_handy_path=tmp_path / "not-compiled-yet",
+    )
+    worker = NativeHandyWorker(settings)
+    worker.initialize()
+    audio = tmp_path / "speech.wav"
+    audio.write_bytes(wav())
+    with pytest.raises(WorkerUnavailable, match="not compiled"):
+        worker.transcribe_file(audio, "fa", WHISPER_ID)
+
+
+def test_native_asr_rejects_wrong_model_response(tmp_path, monkeypatch):
+    from handy_server.workers import NativeHandyWorker, WorkerFailure
+    from dataclasses import replace
+    import pytest
+    settings = setup(tmp_path)
+    binary = tmp_path / "handy"
+    binary.write_text("#!/bin/sh\\nexit 0\\n")
+    binary.chmod(0o700)
+    settings = replace(settings, asr_backend="native_handy", native_handy_path=binary)
+    audio = tmp_path / "speech.wav"
+    audio.write_bytes(wav())
+    monkeypatch.setattr(
+        "handy_server.workers.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"model": QWEN_ID, "text": "wrong model"}),
+            stderr="",
+        ),
+    )
+    worker = NativeHandyWorker(settings)
+    worker.initialize()
+    with pytest.raises(WorkerFailure, match="invalid transcript"):
+        worker.transcribe_file(audio, "fa", WHISPER_ID)
