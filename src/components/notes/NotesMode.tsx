@@ -50,6 +50,7 @@ export function NotesMode() {
   const [liveLevel, setLiveLevel] = useState(0);
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [speechLanguage, setSpeechLanguage] = useState("auto");
   const [pendingNotes, setPendingNotes] = useState<string[]>([]);
   const [liveStatus, setLiveStatus] = useState<
     "idle" | "recording" | "draining" | "saving" | "completed" | "failed"
@@ -221,6 +222,7 @@ export function NotesMode() {
         kind: "note",
         title: title.trim() || null,
         meetingDate: null,
+        language: speechLanguage === "auto" ? null : speechLanguage,
       });
       setRecordingId(info.id);
       setRecording(true);
@@ -549,6 +551,21 @@ export function NotesMode() {
               <Mic size={17} />
               {t("notes.voiceTitle")}
             </div>
+            {!recording && (
+              <label className="text-xs flex items-center gap-2 text-ink-3">
+                {t("meeting.speechLanguage", { defaultValue: "Recording language" })}
+                <select
+                  value={speechLanguage}
+                  disabled={liveBusy}
+                  onChange={(event) => setSpeechLanguage(event.target.value)}
+                  className="border border-line bg-background rounded-lg px-2 py-1"
+                >
+                  <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
+                  <option value="fa">فارسی (Persian)</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            )}
             {recording ? (
               <RecordingPill
                 level={liveLevel}
