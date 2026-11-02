@@ -58,7 +58,7 @@ pub struct MeetingJob {
 }
 
 struct ActiveMeeting {
-    recorder: Recorder,
+    recorder: Recorder<MeetingWavSink>,
     info: MeetingInfo,
     directory: PathBuf,
 }
