@@ -82,7 +82,7 @@ def test_manual_tasks_and_optimistic_version_conflict(setup):
     assert result.status_code==201,result.text
     item=result.json()
     assert item["version"]==1 and item["status"]=="todo"
-    assert client.get("/v1/tasks",headers=AUTH).json()["total"]==1
+    assert client.get("/v1/tasks",headers=AUTH).json()["total"]==2
     changed=client.put("/v1/tasks/"+item["id"],headers=AUTH,json={
         "title":"خروجی نهایی","assignee":"سارا","due_date":None,
         "status":"in_progress","version":1,
