@@ -41,7 +41,14 @@ chmod 600 "$KEY_FILE"
 
 BACKEND_PID=""
 cleanup() {
+  local exit_status=$?
   if [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+    if [[ "$exit_status" -ne 0 ]]; then
+      # A frontend build error should not take down the AI API while the user
+      # diagnoses it. The next dev invocation will reuse the healthy server.
+      echo "[Handy Dev] Tauri exited with status $exit_status; keeping the API running for recovery."
+      return
+    fi
     echo "[Handy Dev] Stopping the API launched by this session."
     kill "$BACKEND_PID" 2>/dev/null || true
     wait "$BACKEND_PID" 2>/dev/null || true
