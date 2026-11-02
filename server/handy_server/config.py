@@ -43,6 +43,7 @@ class Settings:
     asr_compute_type: str = "float16"
     asr_backend: str = "faster_whisper"
     gguf_model_path: Path | None = None
+    gguf_model_dir: Path | None = None
     transcribe_cli_path: Path | None = None
     gguf_compute_backend: str = "auto"
     llm_enabled: bool = False
@@ -85,6 +86,8 @@ class Settings:
             asr_device=os.getenv("HANDY_ASR_DEVICE", "cuda"),
             asr_compute_type=os.getenv("HANDY_ASR_COMPUTE_TYPE", "float16"),
             asr_backend=os.getenv("HANDY_ASR_BACKEND", "faster_whisper").strip().lower(),
+            gguf_model_dir=Path(os.environ["HANDY_GGUF_MODEL_DIR"]).expanduser()
+            if os.environ.get("HANDY_GGUF_MODEL_DIR") else None,
             gguf_model_path=Path(os.environ["HANDY_GGUF_MODEL_PATH"]).expanduser()
                 if os.getenv("HANDY_GGUF_MODEL_PATH") else None,
             transcribe_cli_path=Path(os.environ["HANDY_TRANSCRIBE_CLI_PATH"]).expanduser()
