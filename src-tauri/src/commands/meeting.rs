@@ -3,7 +3,7 @@ use chrono::Utc;
 use handy_recorder::{AudioChunk, Channels, EndReason, Recorder, RecorderConfig, Sink};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::BufWriter;
+use std::io::{BufWriter, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
@@ -68,6 +68,19 @@ pub struct MeetingTranscriptPage {
     pub items: Vec<MeetingUtterance>,
     pub offset: usize,
     pub total: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadState {
+    id: Option<String>,
+    offset: u64,
+    total_bytes: u64,
+    job_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadPartState {
+    offset: u64,
 }
 
 struct ActiveMeeting {
@@ -396,26 +409,110 @@ pub async fn submit_meeting(
         return Err("Stop the recording successfully before uploading".into());
     }
     let audio = directory.join("audio.wav");
-    let form = reqwest::multipart::Form::new()
-        .file("audio", &audio)
-        .await
-        .map_err(|e| e.to_string())?
-        .text("meeting_id", id.clone());
-    let url = server_endpoint(&server_url, "v1/meetings")?;
-    let mut request = client()?.post(url).multipart(form);
-    if let Some(key) = api_key.filter(|s| !s.is_empty()) {
+    let audio_size = fs::metadata(&audio).map_err(|e| e.to_string())?.len();
+    let root = server_endpoint(&server_url, "v1/meetings/uploads")?;
+    let http = client()?;
+    let auth = api_key.as_deref().filter(|s| !s.is_empty());
+
+    // The server uses the local meeting ID as its idempotency key. Repeating
+    // this request after a network failure retrieves the durable byte offset.
+    let mut request = http.post(root.clone()).json(&serde_json::json!({
+        "meeting_id": id,
+        "total_bytes": audio_size,
+    }));
+    if let Some(key) = auth {
         request = request.bearer_auth(key);
     }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("Upload failed: {e}"))?;
-    let status = response.status();
-    let body = response.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() {
-        return Err(format!("Server rejected the audio ({status}): {body}"));
+    let begin = request.send().await
+        .map_err(|e| format!("Cannot start meeting upload: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Server rejected meeting upload: {e}"))?
+        .json::<UploadState>().await.map_err(|e| e.to_string())?;
+
+    if begin.total_bytes != audio_size {
+        return Err("Server upload size does not match local recording".into());
     }
-    let job = serde_json::from_str::<MeetingJob>(&body).map_err(|e| e.to_string())?;
+
+    let job: MeetingJob = if let Some(existing_job) = begin.job_id {
+        get_meeting_job(server_url.clone(), api_key.clone(), existing_job).await?
+    } else {
+        let upload_id = begin.id.ok_or("Upload ID missing")?;
+        if upload_id.len() != 32 || !upload_id.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return Err("Invalid upload ID".into());
+        }
+        let part_url = server_endpoint(
+            &server_url, &format!("v1/meetings/uploads/{upload_id}")
+        )?;
+        let mut offset = begin.offset;
+        if offset > audio_size {
+            return Err("Invalid upload offset from server".into());
+        }
+        let mut retry_count = 0usize;
+        let mut source = File::open(&audio).map_err(|e| e.to_string())?;
+        while offset < audio_size {
+            source.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+            let take = (audio_size - offset).min(4 * 1024 * 1024) as usize;
+            let mut bytes = vec![0; take];
+            source.read_exact(&mut bytes).map_err(|e| e.to_string())?;
+            let mut request = http.put(part_url.clone())
+                .header("X-Upload-Offset", offset.to_string())
+                .body(bytes);
+            if let Some(key) = auth {
+                request = request.bearer_auth(key);
+            }
+            match request.send().await {
+                Ok(response) if response.status().is_success() => {
+                    let part = response.json::<UploadPartState>().await
+                        .map_err(|e| e.to_string())?;
+                    if part.offset <= offset || part.offset > audio_size {
+                        return Err("Invalid upload progress from server".into());
+                    }
+                    offset = part.offset;
+                    retry_count = 0;
+                }
+                Ok(response)
+                    if response.status() == reqwest::StatusCode::CONFLICT => {
+                    retry_count += 1;
+                }
+                Ok(response) => {
+                    return Err(format!("Meeting upload failed (HTTP {})", response.status()));
+                }
+                Err(_) => {
+                    retry_count += 1;
+                }
+            }
+            if retry_count > 0 {
+                if retry_count > 3 {
+                    return Err("Meeting upload interrupted; retry the recording to resume".into());
+                }
+                let mut probe = http.get(part_url.clone());
+                if let Some(key) = auth {
+                    probe = probe.bearer_auth(key);
+                }
+                let state = probe.send().await
+                    .map_err(|_| "Cannot reconnect to meeting upload")?
+                    .error_for_status()
+                    .map_err(|_| "Cannot resume meeting upload")?
+                    .json::<UploadState>().await.map_err(|e| e.to_string())?;
+                if state.offset > audio_size {
+                    return Err("Server resumed past the end of the file".into());
+                }
+                offset = state.offset;
+            }
+        }
+        let finish_url = server_endpoint(
+            &server_url, &format!("v1/meetings/uploads/{upload_id}/finish")
+        )?;
+        let mut request = http.post(finish_url);
+        if let Some(key) = auth {
+            request = request.bearer_auth(key);
+        }
+        request.send().await
+            .map_err(|e| format!("Cannot finish meeting upload: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("Meeting upload finalize failed: {e}"))?
+            .json::<MeetingJob>().await.map_err(|e| e.to_string())?
+    };
     info.remote_job_id = Some(job.id.clone());
     info.remote_server_url = Some(server_url);
     write_info(&directory, &info)?;
