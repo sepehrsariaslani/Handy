@@ -338,7 +338,7 @@ export const MeetingMode = () => {
     const speaker = chosen === "__new"
       ? "MANUAL_" + String(
           Math.max(0, ...speakers
-            .filter((id) => /^MANUAL_\\d+$/.test(id))
+            .filter((id) => /^MANUAL_[0-9]+$/.test(id))
             .map((id) => Number(id.slice(7)))) + 1,
         ).padStart(2, "0")
       : chosen;
