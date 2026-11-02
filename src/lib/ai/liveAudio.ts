@@ -16,7 +16,10 @@ export class LiveAudioCapture {
   private readonly sampleRate = 16000;
   private readonly maxSamples = 16000 * 5;
 
-  constructor(private readonly onChunk: (bytes: ArrayBuffer) => void) {}
+  constructor(
+    private readonly onChunk: (bytes: ArrayBuffer) => void,
+    private readonly onLevel?: (level: number) => void,
+  ) {}
 
   private emitChunk(): void {
     if (this.total.length < 1600) return;
@@ -57,6 +60,7 @@ export class LiveAudioCapture {
       }
     }
     const rms = produced ? Math.sqrt(energy / produced) : 0;
+    this.onLevel?.(Math.min(1, rms));
     this.silenceSamples = rms < 0.007 ? this.silenceSamples + produced : 0;
     if (
       this.total.length >= this.maxSamples ||
