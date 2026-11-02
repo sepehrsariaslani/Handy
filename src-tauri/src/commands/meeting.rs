@@ -207,6 +207,11 @@ impl Sink for MeetingWavSink {
 /// model is symlinked, never duplicated or downloaded a second time.
 /// Without the shared dev-only directory, legacy remote servers retain their
 /// existing configured ASR model; we do not claim to switch them.
+fn asr_registry_filename(model_id: &str) -> String {
+    // Must match the local server's hashlib.sha256(...).hexdigest().
+    format!("asr-{:x}.gguf", Sha256::digest(model_id.as_bytes()))
+}
+
 fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
     let Some(directory) = std::env::var_os("HANDY_MEETING_MODEL_DIR") else {
         return Ok(None);
@@ -221,7 +226,7 @@ fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
     if selected.len() > 512 {
         return Err("Selected transcription model ID is too long".into());
     }
-    let safe_file = format!("asr-{:x}.gguf", Sha256::digest(selected.as_bytes()));
+    let safe_file = asr_registry_filename(&selected);
     let manager = app.state::<Arc<ModelManager>>();
     let path = manager
         .get_model_path(&selected)
@@ -832,4 +837,29 @@ pub async fn get_meeting_transcript(
         .json()
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod asr_registry_tests {
+    use super::asr_registry_filename;
+
+    #[test]
+    fn catalog_ids_are_hashed_not_interpreted_as_directory_paths() {
+        assert_eq!(
+            asr_registry_filename("abc"),
+            "asr-ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.gguf"
+        );
+        let catalog_id =
+            "handy-computer/whisper-large-v3-gguf/whisper-large-v3-Q5_K_M.gguf";
+        let path = asr_registry_filename(catalog_id);
+        assert_eq!(path.len(), 73);
+        assert!(!path.contains('/'));
+        assert_ne!(path, asr_registry_filename("abc"));
+        assert_ne!(
+            path,
+            asr_registry_filename(
+                "handy-computer/qwen3-asr-1.7b-gguf/qwen3-asr-1.7b-Q5_K_M.gguf"
+            )
+        );
+    }
 }
