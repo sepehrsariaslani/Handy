@@ -323,11 +323,24 @@ class QwenWorker:
                 timeout=httpx.Timeout(240.0 if ollama else 120.0, connect=5.0),
                 follow_redirects=False,
             ) as client:
-                response = await client.post(
-                    validate_llm_url(self.settings.qwen_base_url) + "/chat/completions",
-                    headers={"Authorization": "Bearer " + self.settings.qwen_api_key},
-                    json=payload,
-                )
+                endpoint = validate_llm_url(self.settings.qwen_base_url) + "/chat/completions"
+                headers = {"Authorization": "Bearer " + self.settings.qwen_api_key}
+                response = await client.post(endpoint, headers=headers, json=payload)
+                if ollama and response.status_code == 501:
+                    # Some Ollama MLX distributions have no XGrammar grammar
+                    # library: response_format=json_object returns 501 while
+                    # regular chat still works. Use the same Qwen model without
+                    # grammar constraints and validate its JSON locally.
+                    logger.warning(
+                        "qwen.structured_output_unavailable operation=%s provider=ollama "
+                        "http_status=501 retry_without_response_format=true",
+                        operation,
+                    )
+                    plain_payload = {key: value for key, value in payload.items()
+                                     if key != "response_format"}
+                    response = await client.post(
+                        endpoint, headers=headers, json=plain_payload
+                    )
                 response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
                 if not isinstance(content, str) or "<think>" in content or "</think>" in content:
