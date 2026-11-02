@@ -121,6 +121,17 @@ class MeetingStore:
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM meeting_segments WHERE job_id=?", (job_id,)).fetchone()[0]
 
+    def save_cleaned(self, job_id: str, parts: list[str]):
+        """Persist cleaned transcript before optional Qwen meeting analysis.
+
+        An unavailable analyzer must never hide successful Whisper output.
+        """
+        with self.connect() as db:
+            for index, part in enumerate(parts):
+                db.execute("""INSERT OR REPLACE INTO meeting_cleaned_blocks
+                    (job_id,block_index,text) VALUES(?,?,?)""",
+                    (job_id, index, part))
+
     def cleaned(self, job_id: str, offset: int = 0, limit: int = 10) -> dict:
         with self.connect() as db:
             records = db.execute("""SELECT text FROM meeting_cleaned_blocks
