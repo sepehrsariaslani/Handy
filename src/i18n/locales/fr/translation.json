@@ -116,7 +116,8 @@
     "debug": "Débogage",
     "about": "À propos",
     "notes": "Notes",
-    "memory": "Memory"
+    "memory": "Memory",
+    "tasks": "Tasks"
   },
   "onboarding": {
     "customModelDescription": "Non officiellement pris en charge",
@@ -1111,7 +1112,7 @@
   },
   "memory": {
     "title": "Ask your memory",
-    "intro": "Ask about past meetings and notes. Answers show the original evidence, not unsupported guesses.",
+    "intro": "Ask follow-up questions about previous meetings and notes with evidence. Optionally enable CPU semantic retrieval to find paraphrases.",
     "serverUrl": "Private Handy server URL",
     "apiKey": "API token (kept in memory only)",
     "privacy": "Your notes and meeting transcripts stay on your configured private server. Do not share the server's single-tenant API key.",
@@ -1137,9 +1138,54 @@
     "cited": "Cited in answer",
     "meeting": "Meeting",
     "note": "Note",
-    "review": "AI citations confirm that a source exists, not that the conclusion is necessarily correct. Review quotes before acting.",
+    "review": "Check source excerpts before acting on AI-generated conclusions. Saved conversations retain previous answers until deleted.",
     "dateError": "Start date must not exceed end date.",
     "requestError": "Memory search failed",
-    "appliedPeriod": "Search period (UTC)"
+    "appliedPeriod": "Search period (UTC)",
+    "conversations": "Conversations",
+    "newConversation": "New conversation",
+    "oneOff": "One-off question (not saved)",
+    "deleteConversation": "Delete conversation",
+    "deleteConversationConfirm": "Delete this conversation's entire question-and-answer history?",
+    "semantic": "Optional semantic index",
+    "semanticCount": "{{count}} evidence snippets indexed",
+    "semanticOff": "Semantic search disabled; keyword search remains available.",
+    "syncSemantic": "Index next 100 snippets",
+    "indexed": "{{count}} new snippets indexed"
+  },
+  "tasks": {
+    "title": "Tasks & Follow-ups",
+    "intro": "Turn reviewed meeting action items into trackable tasks; update owners and due dates yourself.",
+    "serverUrl": "Private Handy server URL",
+    "apiKey": "Server API token (RAM only)",
+    "privacy": "Tasks are stored on your private server. No external TODO app or calendar is modified.",
+    "meetingId": "Completed meeting job ID",
+    "meetingPlaceholder": "32-character ID from Meeting Mode",
+    "importMeeting": "Import meeting tasks",
+    "imported": "{{count}} tasks imported",
+    "error": "Task request failed",
+    "filter": "Status",
+    "status": {
+      "all": "All",
+      "todo": "To do",
+      "in_progress": "In progress",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "new": "New task",
+    "count": "{{count}} tasks",
+    "empty": "No tasks yet.",
+    "taskTitle": "Task",
+    "assignee": "Assignee",
+    "dueDate": "Due date",
+    "state": "Status",
+    "save": "Save",
+    "saved": "Task saved",
+    "delete": "Delete task",
+    "deleted": "Task deleted",
+    "deleteConfirm": "Permanently delete this task?",
+    "evidence": "Original conversation evidence",
+    "fromMeeting": "Source meeting",
+    "review": "Review suggested tasks, owners and deadlines before assigning work."
   }
 }
