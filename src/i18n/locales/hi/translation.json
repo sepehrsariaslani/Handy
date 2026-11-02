@@ -114,7 +114,8 @@
     "postProcessing": "पोस्ट प्रोसेस",
     "history": "इतिहास",
     "debug": "डिबग",
-    "about": "के बारे में"
+    "about": "के बारे में",
+    "notes": "Notes"
   },
   "onboarding": {
     "customModelDescription": "आधिकारिक रूप से समर्थित नहीं",
@@ -1068,5 +1069,43 @@
     "learnMore": "इसे कैसे ठीक करें",
     "recorderBlocked": "अभी शॉर्टकट रिकॉर्ड नहीं किए जा सकते — macOS Secure Input कुंजी इवेंट ब्लॉक कर रहा है. पहले Secure Input चेतावनी हल करें.",
     "dismiss": "खारिज करें"
+  },
+  "notes": {
+    "title": "Notes & Knowledge",
+    "intro": "Your private searchable notes, grounded highlights, and meeting summaries. Basic note storage/search uses no GPU.",
+    "serverUrl": "Private Handy server URL",
+    "token": "Server API key (kept in memory only)",
+    "privacy": "Notes are stored on your configured server. A single API key grants access to all notes; do not share it with other people.",
+    "meetingId": "Completed meeting job ID",
+    "meetingPlaceholder": "32-character meeting job ID",
+    "importMeeting": "Import meeting summary",
+    "imported": "Meeting note created",
+    "importFailed": "Could not import meeting",
+    "search": "Search notes (Persian or English)",
+    "new": "New note",
+    "loading": "Loading…",
+    "empty": "No matching notes",
+    "count": "{{count}} notes",
+    "previous": "Previous",
+    "next": "Next",
+    "noteTitle": "Note title",
+    "content": "Write or paste your notes here…",
+    "save": "Save note",
+    "saved": "Note saved",
+    "saveFailed": "Could not save note",
+    "saveFirst": "Save your changes before AI analysis",
+    "analyze": "Organize with Qwen",
+    "analysis": "AI-organized notes",
+    "analyzed": "Note analysis complete",
+    "analysisFailed": "AI analysis unavailable or failed",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this note permanently? The linked original meeting is kept.",
+    "deleted": "Note deleted",
+    "deleteFailed": "Could not delete note",
+    "loadFailed": "Could not load notes",
+    "meetingSource": "Original meeting",
+    "keyPoints": "Key points with sources",
+    "reviewQuestions": "Review questions",
+    "review": "AI may misinterpret details. Check the original source lines before acting on tasks or dates."
   }
 }
