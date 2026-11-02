@@ -21,6 +21,7 @@ import type {
   AiSemanticStatus,
 } from "@/lib/ai/contracts";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -37,6 +38,8 @@ export function MemoryMode() {
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
   // Bearer credentials must not be stored in persistent web storage.
   const [token, setToken] = useState("");
+  const localApiKey = useLocalAiApiKey(serverUrl);
+  const authToken = token.trim() || localApiKey;
   const [question, setQuestion] = useState("");
   const [scope, setScope] = useState<AiMemoryScope>("all");
   const [since, setSince] = useState("");
@@ -51,13 +54,13 @@ export function MemoryMode() {
   );
 
   const client = useMemo(() => {
-    if (!token.trim()) return null;
+    if (!authToken) return null;
     try {
-      return new HandyAiClient(serverUrl, token.trim());
+      return new HandyAiClient(serverUrl, authToken);
     } catch {
       return null;
     }
-  }, [serverUrl, token]);
+  }, [serverUrl, authToken]);
 
   useEffect(() => {
     let active = true;
@@ -263,7 +266,10 @@ export function MemoryMode() {
             type="url"
             className="rounded-lg border border-line bg-transparent px-3 py-2"
             value={serverUrl}
-            onChange={(event) => setServerUrl(event.target.value)}
+            onChange={(event) => {
+              setServerUrl(event.target.value);
+              setToken("");
+            }}
             onBlur={() => {
               try {
                 setServerUrl(saveServerUrl(serverUrl));
@@ -280,6 +286,7 @@ export function MemoryMode() {
             autoComplete="off"
             className="rounded-lg border border-line bg-transparent px-3 py-2"
             value={token}
+            placeholder={localApiKey ? "Local API key detected" : undefined}
             onChange={(event) => setToken(event.target.value)}
           />
         </label>
