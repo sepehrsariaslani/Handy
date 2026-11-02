@@ -1,5 +1,5 @@
 """Durable, single-process meeting jobs and incremental transcript checkpoints."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -20,9 +20,14 @@ class MeetingStore:
                 id TEXT PRIMARY KEY, client_ref TEXT UNIQUE, audio_path TEXT NOT NULL,
                 status TEXT NOT NULL, stage TEXT NOT NULL, error TEXT,
                 duration REAL NOT NULL, next_sample INTEGER NOT NULL DEFAULT 0,
-                language TEXT, insights TEXT, created_at TEXT NOT NULL,
+                language TEXT, insights TEXT, title TEXT, meeting_date TEXT,
+                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(meeting_jobs)")}
+            for column in ("title", "meeting_date"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE meeting_jobs ADD COLUMN {column} TEXT")
             db.execute("""CREATE TABLE IF NOT EXISTS meeting_segments (
                 job_id TEXT NOT NULL, id TEXT NOT NULL,
                 speaker TEXT NOT NULL, start REAL NOT NULL,
@@ -40,7 +45,8 @@ class MeetingStore:
         db.row_factory = sqlite3.Row
         return db
 
-    def create(self, path: Path, duration: float, client_ref: str | None, language: str | None) -> dict:
+    def create(self, path: Path, duration: float, client_ref: str | None, language: str | None,
+               title: str | None = None, meeting_date: str | None = None) -> dict:
         job_id = uuid4().hex
         with self.connect() as db:
             if client_ref:
@@ -49,9 +55,10 @@ class MeetingStore:
                     return dict(prior)
             db.execute("""INSERT INTO meeting_jobs
                 (id, client_ref, audio_path, status, stage, duration, next_sample, language,
-                 created_at, updated_at)
-                 VALUES(?,?,?,'queued','queued',?,0,?,?,?)""",
-                (job_id, client_ref, str(path), duration, language, now(), now()))
+                 title, meeting_date, created_at, updated_at)
+                 VALUES(?,?,?,'queued','queued',?,0,?,?,?,?,?)""",
+                (job_id, client_ref, str(path), duration, language,
+                 title, meeting_date, now(), now()))
         return self.get(job_id)
 
     def by_client_ref(self, value: str) -> dict | None:
@@ -108,10 +115,29 @@ class MeetingStore:
             return db.execute("SELECT COUNT(*) FROM meeting_segments WHERE job_id=?", (job_id,)).fetchone()[0]
 
     def complete(self, job_id: str, insights: MeetingAnalysis | None):
-        payload=json.dumps(insights.model_dump(), ensure_ascii=False) if insights else None
+        # The meeting and its action tasks commit atomically, even on worker crash.
+        from .task_store import TaskStore
+        tasks = TaskStore(self.db_path)
+        payload = json.dumps(insights.model_dump(), ensure_ascii=False) if insights else None
         with self.connect() as db:
+            row = db.execute("SELECT title,meeting_date,created_at FROM meeting_jobs WHERE id=?",
+                             (job_id,)).fetchone()
+            if row is None:
+                raise KeyError("Meeting not found")
+            suggested = (insights.title or "").strip() if insights else ""
+            summary = (insights.summary or "").strip() if insights else ""
+            title = row["title"] or suggested[:180] or summary.split("\n")[0][:120] or "Meeting"
+            proposed_date = (insights.meeting_date or "").strip() if insights else ""
+            try:
+                inferred_date = date.fromisoformat(proposed_date).isoformat()
+            except ValueError:
+                inferred_date = row["created_at"][:10]
+            meeting_date = row["meeting_date"] or inferred_date
             db.execute("""UPDATE meeting_jobs SET status='completed',stage='completed',
-                insights=?,error=NULL,updated_at=? WHERE id=?""",(payload,now(),job_id))
+                title=?,meeting_date=?,insights=?,error=NULL,updated_at=? WHERE id=?""",
+                (title,meeting_date,payload,now(),job_id))
+            if insights:
+                tasks.import_meeting(job_id, connection=db)
 
     def fail(self, job_id: str, reason: str):
         with self.connect() as db:
@@ -131,7 +157,8 @@ class MeetingStore:
         if job is None:
             return None
         return {
-            "id": job_id, "status": job["status"], "stage": job["stage"],
+            "id": job_id, "title": job["title"], "meeting_date": job["meeting_date"],
+            "status": job["status"], "stage": job["stage"],
             "error": job["error"], "duration": job["duration"],
             "processed_seconds": min(job["duration"], job["next_sample"]/16000),
             "transcript_count": self.count(job_id),
