@@ -143,6 +143,19 @@ export const MeetingMode = () => {
     }
   };
 
+  const recover = async (meeting: MeetingInfo) => {
+    if (busy || !window.confirm(t("meeting.recoverConfirm"))) return;
+    setBusy(true);
+    try {
+      await invoke<MeetingInfo>("recover_meeting", { id: meeting.id });
+      await refresh();
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const upload = async (meeting: MeetingInfo) => {
     if (busy) return;
     setBusy(true);
@@ -279,6 +292,9 @@ export const MeetingMode = () => {
               <p className="text-xs text-ink-3">{meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB</p>
               <p className="text-xs text-ink-3 break-all">{meeting.audio_path}</p>
             </div>
+            {["incomplete", "interrupted"].includes(meeting.status) && (
+              <button type="button" disabled={busy} onClick={() => void recover(meeting)} className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">{t("meeting.recover")}</button>
+            )}
             <button type="button" disabled={busy || meeting.status !== "ready"} onClick={() => {
               if (meeting.remote_job_id) {
                 setJob(null);

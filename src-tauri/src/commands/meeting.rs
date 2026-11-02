@@ -264,6 +264,39 @@ pub fn stop_meeting(state: State<'_, MeetingState>) -> Result<MeetingInfo, Strin
     Ok(active.info)
 }
 
+
+#[tauri::command]
+#[specta::specta]
+pub fn recover_meeting(
+    app: AppHandle,
+    state: State<'_, MeetingState>,
+    id: String,
+) -> Result<MeetingInfo, String> {
+    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || id.len() > 80 {
+        return Err("Invalid meeting ID".into());
+    }
+    if state.active.lock().map_err(|e| e.to_string())?
+        .as_ref().is_some_and(|meeting| meeting.info.id == id)
+    {
+        return Err("Cannot recover an active recording".into());
+    }
+    let directory = meeting_dir(&app)?.join(&id);
+    let mut info = get_info(&directory)?;
+    if info.status != "recording" && info.status != "incomplete" {
+        return Err("This recording does not need recovery".into());
+    }
+    let path = directory.join("audio.wav");
+    let reader = hound::WavReader::open(&path)
+        .map_err(|e| format!("WAV is not readable; original file is preserved: {e}"))?;
+    if reader.duration() == 0 {
+        return Err("The recording contains no recoverable audio".into());
+    }
+    info.bytes = fs::metadata(path).map_err(|e| e.to_string())?.len();
+    info.status = "ready".into();
+    write_info(&directory, &info)?;
+    Ok(info)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn list_meetings(app: AppHandle, state: State<'_, MeetingState>) -> Result<Vec<MeetingInfo>, String> {
