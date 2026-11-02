@@ -52,7 +52,8 @@ export function NotesMode() {
   const liveSession = useRef<LiveStreamSession | null>(null);
   const liveParts = useRef(new Map<number, string>());
   const liveSaved = useRef(false);
-  const liveBusy = recording || liveStatus === "draining" || liveStatus === "saving";
+  const liveBusy =
+    recording || liveStatus === "draining" || liveStatus === "saving";
 
   const client = useMemo(
     () => (authToken ? new HandyAiClient(serverUrl, authToken) : null),
@@ -218,7 +219,9 @@ export function NotesMode() {
       liveSession.current = null;
       setRecording(false);
       setLiveStatus("failed");
-      toast.error("Cannot start live recording", { description: message(error) });
+      toast.error("Cannot start live recording", {
+        description: message(error),
+      });
     }
   };
 
@@ -275,7 +278,13 @@ export function NotesMode() {
   };
 
   const remove = async () => {
-    if (!client || !note || busy || liveBusy || !window.confirm(t("notes.deleteConfirm")))
+    if (
+      !client ||
+      !note ||
+      busy ||
+      liveBusy ||
+      !window.confirm(t("notes.deleteConfirm"))
+    )
       return;
     setBusy(true);
     try {
@@ -475,7 +484,10 @@ export function NotesMode() {
             {livePartial && recording && (
               <p className="text-sm text-ink-3" dir="auto">
                 {livePartial}
-                <span className="ms-1 inline-block h-4 w-0.5 animate-pulse bg-logo-primary" aria-hidden="true" />
+                <span
+                  className="ms-1 inline-block h-4 w-0.5 animate-pulse bg-logo-primary"
+                  aria-hidden="true"
+                />
               </p>
             )}
             {liveStatus === "draining" && (
