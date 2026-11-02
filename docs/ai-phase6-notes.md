@@ -1,5 +1,17 @@
 # Phase 6 — Notes and searchable knowledge
 
+Handy has a dedicated Notes tab. Voice notes now record a durable WAV using the same
+native capture as Meeting, then process it **only after Stop** using the shared
+server-side Whisper inference runtime. Live/WebSocket transcription is deliberately
+not used for Notes. An interrupted upload keeps the original WAV for retry.
+
+The worker runs Qwen text cleanup on bounded blocks, preserving the original
+utterance data. Completed notes are saved automatically on the server even if
+the Notes screen is closed. Very long transcripts are split into sequential,
+editable notes rather than silently truncated. Opening Notes again retrieves
+completed notes; an unsynced local recording can be retried from the pending
+recordings panel.
+
 Handy now has a dedicated Notes tab. Notes storage, search, editing, and meeting linking work on SQLite **without a GPU**. AI organization with Qwen is optional.
 
 ## Workflow
@@ -51,3 +63,37 @@ Qwen3.5-9B is a **separate** private OpenAI-compatible model server. Official vL
 This is **single-tenant**: one API key grants access to every note and meeting. There is no per-user authorization, mobile background capture, automatic calendar/TODO integration, embeddings, vector search or conversational memory yet. Do not give the same key to unrelated customers or expose the API without TLS and access controls. Backups, encryption, deletion retention and quotas remain deployment responsibilities.
 
 Tests: `cd server && python -m pytest -q`. Frontend: `bun run lint && bun run format:check && bun run build`.
+
+
+## Ollama/Qwen diagnostics and Persian cleanup
+
+For an Ollama-hosted Qwen model use an exact model ID returned by Ollama,
+not the default vLLM model ID:
+
+```bash
+export HANDY_QWEN_PROVIDER=ollama
+export HANDY_QWEN_BASE_URL=http://127.0.0.1:11434/v1
+export HANDY_QWEN_MODEL=qwen3.5:9b
+export HANDY_LLM_ENABLED=true
+export HANDY_AI_LOG_LEVEL=INFO
+```
+
+The API logger now records Qwen model readiness, operation names
+(`cleanup`, `note_analysis`, `meeting_analysis`), HTTP failure statuses
+and elapsed milliseconds without logging prompts, transcripts or secrets.
+The Ollama OpenAI-compatible chat endpoint receives `reasoning_effort=none`
+rather than vLLM's `chat_template_kwargs`, including for organized note
+and meeting analysis. A mismatch between `HANDY_QWEN_MODEL` and
+`/v1/models` is reported in the API logs.
+
+The cleanup prompt resolves explicit last-word self-corrections and translates
+ordinary English action verbs embedded in Persian sentences into natural
+Persian, while preserving proper names, genuinely bilingual language, numerals,
+dates, commitments and technical IDs. Qwen remains probabilistic; compare
+against the raw transcript before relying on critical details.
+
+Long-form meeting decoding now uses 120-second durable checkpoints rather
+than 30-second independent requests. This shares the Whisper worker used by
+`POST /v1/transcriptions`, but is not identical to Handy's separate
+offline/native desktop dictation backend. Audio quality, GPU and model
+configuration can still affect accuracy and latency.
