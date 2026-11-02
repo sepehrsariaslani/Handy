@@ -8,10 +8,12 @@ import {
   Sparkles,
   Cpu,
   Mic,
+  RadioTower,
 } from "lucide-react";
 import HandyTextLogo from "./icons/HandyTextLogo";
 import HandyHand from "./icons/HandyHand";
 import { MeetingMode } from "./meeting/MeetingMode";
+import { LiveMode } from "./live/LiveMode";
 import { useSettings } from "../hooks/useSettings";
 import {
   GeneralSettings,
@@ -45,6 +47,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.general",
     icon: HandyHand,
     component: GeneralSettings,
+    enabled: () => true,
+  },
+  live: {
+    labelKey: "sidebar.live",
+    icon: RadioTower,
+    component: LiveMode,
     enabled: () => true,
   },
   meeting: {
