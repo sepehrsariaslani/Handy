@@ -8,6 +8,7 @@ on:
       - "src/components/live/**"
       - "src/components/meeting/**"
       - "src/components/notes/**"
+      - "src/components/memory/**"
       - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "src/components/live/**"
       - "src/components/meeting/**"
       - "src/components/notes/**"
+      - "src/components/memory/**"
       - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
 

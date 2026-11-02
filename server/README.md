@@ -190,3 +190,9 @@ limits and API routes: [Phase 5 Meeting Mode](../docs/ai-phase5-meeting.md).
 
 CPU-only searchable notes, optional Qwen analysis and meeting imports.
 See [Phase 6](../docs/ai-phase6-notes.md) for the API and deployment.
+
+## Phase 7: Memory and evidence-grounded questions
+
+CPU-only full-text retrieval across notes and completed meetings, with
+optional Qwen answers and exact source citations. See
+[Phase 7 Memory](../docs/ai-phase7-memory.md) for usage and safety limits.
