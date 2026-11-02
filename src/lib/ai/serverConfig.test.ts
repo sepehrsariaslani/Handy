@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { normalizeServerUrl } from "./serverConfig";
 
-assert.equal(normalizeServerUrl("http://127.0.0.1:8765/"), "http://127.0.0.1:8765");
-assert.equal(normalizeServerUrl("https://api.example.com/"), "https://api.example.com");
-assert.equal(normalizeServerUrl("http://localhost:8765"), "http://localhost:8765");
+assert.equal(
+  normalizeServerUrl("http://127.0.0.1:8765/"),
+  "http://127.0.0.1:8765",
+);
+assert.equal(
+  normalizeServerUrl("https://api.example.com/"),
+  "https://api.example.com",
+);
+assert.equal(
+  normalizeServerUrl("http://localhost:8765"),
+  "http://localhost:8765",
+);
 
 for (const unsafe of [
   "http://example.com",

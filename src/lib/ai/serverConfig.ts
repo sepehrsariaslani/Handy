@@ -9,7 +9,9 @@ export function normalizeServerUrl(value: string): string {
     throw new Error("Remote AI servers require HTTPS");
   }
   if (url.username || url.password || url.search || url.hash) {
-    throw new Error("Server URL must not contain credentials, query or fragment");
+    throw new Error(
+      "Server URL must not contain credentials, query or fragment",
+    );
   }
   if (url.pathname !== "/") {
     throw new Error("Enter the server root URL, without a path");

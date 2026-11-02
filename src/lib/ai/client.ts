@@ -4,7 +4,10 @@ import { normalizeServerUrl } from "./serverConfig";
 /** Phase-1 client for common authenticated session APIs. Token is memory-only. */
 export class HandyAiClient {
   private readonly url: string;
-  constructor(baseUrl: string, private readonly apiToken: string) {
+  constructor(
+    baseUrl: string,
+    private readonly apiToken: string,
+  ) {
     this.url = normalizeServerUrl(baseUrl);
   }
 

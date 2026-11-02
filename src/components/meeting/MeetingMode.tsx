@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Mic, Square, UploadCloud, RefreshCw, Server, FileAudio, ClipboardList } from "lucide-react";
+import {
+  Mic,
+  Square,
+  UploadCloud,
+  RefreshCw,
+  Server,
+  FileAudio,
+  ClipboardList,
+} from "lucide-react";
 import { toast } from "sonner";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
 
@@ -46,7 +54,6 @@ type MeetingJob = {
   insights?: Insights;
 };
 
-
 const readError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
@@ -72,7 +79,10 @@ export const MeetingMode = () => {
   const [visibleCount, setVisibleCount] = useState(150);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
-  const speakers = useMemo(() => [...new Set(job?.transcript?.map((entry) => entry.speaker) ?? [])], [job?.transcript]);
+  const speakers = useMemo(
+    () => [...new Set(job?.transcript?.map((entry) => entry.speaker) ?? [])],
+    [job?.transcript],
+  );
 
   const refresh = useCallback(async () => {
     const result = await invoke<MeetingInfo[]>("list_meetings");
@@ -184,7 +194,11 @@ export const MeetingMode = () => {
     if (!jobId || busy) return;
     setBusy(true);
     try {
-      const result = await invoke<MeetingJob>("retry_meeting_job", { serverUrl, apiKey: apiKey || null, jobId });
+      const result = await invoke<MeetingJob>("retry_meeting_job", {
+        serverUrl,
+        apiKey: apiKey || null,
+        jobId,
+      });
       setJob(result);
     } catch (error) {
       toast.error(readError(error));
@@ -201,10 +215,17 @@ export const MeetingMode = () => {
           type="button"
           className="text-xs text-logo-primary underline"
           onClick={() => {
-            const index = job?.transcript?.findIndex((segment) => segment.id === id) ?? -1;
+            const index =
+              job?.transcript?.findIndex((segment) => segment.id === id) ?? -1;
             setTranscriptOpen(true);
             if (index >= visibleCount) setVisibleCount(index + 1);
-            window.setTimeout(() => document.getElementById("meeting-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+            window.setTimeout(
+              () =>
+                document
+                  .getElementById("meeting-" + id)
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+              50,
+            );
           }}
         >
           {id}
@@ -219,10 +240,22 @@ export const MeetingMode = () => {
       {rows?.length ? (
         <ul className="flex flex-col gap-2">
           {rows.map((entry, index) => (
-            <li key={index} className="rounded-lg border border-line p-3 text-sm">
+            <li
+              key={index}
+              className="rounded-lg border border-line p-3 text-sm"
+            >
               <span>{entry.text}</span>
-              {entry.assignee && <span className="text-ink-3 ms-2">· {t("meeting.assignee")}: {speakerNames[entry.assignee] || entry.assignee}</span>}
-              {entry.due_date && <span className="text-ink-3 ms-2">· {t("meeting.dueDate")}: {entry.due_date}</span>}
+              {entry.assignee && (
+                <span className="text-ink-3 ms-2">
+                  · {t("meeting.assignee")}:{" "}
+                  {speakerNames[entry.assignee] || entry.assignee}
+                </span>
+              )}
+              {entry.due_date && (
+                <span className="text-ink-3 ms-2">
+                  · {t("meeting.dueDate")}: {entry.due_date}
+                </span>
+              )}
               {sources(entry.source_ids ?? [])}
             </li>
           ))}
@@ -236,83 +269,151 @@ export const MeetingMode = () => {
   return (
     <div className="w-full max-w-3xl flex flex-col gap-5 pb-8">
       <div className="w-full">
-        <h1 className="text-xl font-semibold flex gap-2 items-center"><Mic size={22} />{t("meeting.title")}</h1>
+        <h1 className="text-xl font-semibold flex gap-2 items-center">
+          <Mic size={22} />
+          {t("meeting.title")}
+        </h1>
         <p className="text-sm text-ink-3 mt-2">{t("meeting.intro")}</p>
       </div>
       <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold">{t("meeting.recording")}</h2>
-          <span className="text-xs text-ink-3">{currentId ? t("meeting.recordingNow") : t("meeting.stopped")}</span>
+          <span className="text-xs text-ink-3">
+            {currentId ? t("meeting.recordingNow") : t("meeting.stopped")}
+          </span>
         </div>
         <label className="text-sm flex gap-2 items-start">
-          <input type="checkbox" checked={consent} disabled={Boolean(currentId)} onChange={(event) => setConsent(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={consent}
+            disabled={Boolean(currentId)}
+            onChange={(event) => setConsent(event.target.checked)}
+          />
           <span>{t("meeting.consent")}</span>
         </label>
         <div className="flex flex-wrap gap-2">
           {!currentId ? (
-            <button type="button" disabled={!consent || busy} onClick={() => void start()}
-              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">
-              <Mic size={16} />{t("meeting.start")}
+            <button
+              type="button"
+              disabled={!consent || busy}
+              onClick={() => void start()}
+              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+            >
+              <Mic size={16} />
+              {t("meeting.start")}
             </button>
           ) : (
-            <button type="button" disabled={busy} onClick={() => void stop()}
-              className="flex items-center gap-2 bg-red-600 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">
-              <Square size={16} />{t("meeting.stop")}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void stop()}
+              className="flex items-center gap-2 bg-red-600 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+            >
+              <Square size={16} />
+              {t("meeting.stop")}
             </button>
           )}
-          <button type="button" onClick={() => void refresh()} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
-            <RefreshCw size={16} />{t("meeting.refresh")}
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
+          >
+            <RefreshCw size={16} />
+            {t("meeting.refresh")}
           </button>
         </div>
         <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
       </div>
 
       <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
-        <h2 className="font-semibold flex items-center gap-2"><Server size={17} />{t("meeting.server")}</h2>
+        <h2 className="font-semibold flex items-center gap-2">
+          <Server size={17} />
+          {t("meeting.server")}
+        </h2>
         <label className="flex flex-col gap-1 text-sm">
           {t("meeting.serverUrl")}
-          <input className="rounded-lg border border-line bg-transparent px-3 py-2" type="url" value={serverUrl}
+          <input
+            className="rounded-lg border border-line bg-transparent px-3 py-2"
+            type="url"
+            value={serverUrl}
             onChange={(event) => setServerUrl(event.target.value)}
             onBlur={() => {
-              try { setServerUrl(saveServerUrl(serverUrl)); }
-              catch (error) { toast.error(readError(error)); }
-            }} />
+              try {
+                setServerUrl(saveServerUrl(serverUrl));
+              } catch (error) {
+                toast.error(readError(error));
+              }
+            }}
+          />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           {t("meeting.apiKey")}
-          <input className="rounded-lg border border-line bg-transparent px-3 py-2" type="password" autoComplete="off"
-            value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
+          <input
+            className="rounded-lg border border-line bg-transparent px-3 py-2"
+            type="password"
+            autoComplete="off"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+          />
         </label>
         <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
       </div>
 
       <section className="w-full flex flex-col gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><FileAudio size={17} />{t("meeting.saved")}</h2>
-        {meetings.length === 0 && <p className="text-ink-3 text-sm">{t("meeting.noRecordings")}</p>}
+        <h2 className="font-semibold flex items-center gap-2">
+          <FileAudio size={17} />
+          {t("meeting.saved")}
+        </h2>
+        {meetings.length === 0 && (
+          <p className="text-ink-3 text-sm">{t("meeting.noRecordings")}</p>
+        )}
         {meetings.map((meeting) => (
-          <div key={meeting.id} className="border border-line rounded-lg p-3 flex flex-wrap justify-between gap-3 items-center">
+          <div
+            key={meeting.id}
+            className="border border-line rounded-lg p-3 flex flex-wrap justify-between gap-3 items-center"
+          >
             <div className="min-w-0">
-              <p className="text-sm font-medium">{new Date(meeting.started_at).toLocaleString()}</p>
-              <p className="text-xs text-ink-3">{meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB</p>
-              <p className="text-xs text-ink-3 break-all">{meeting.audio_path}</p>
+              <p className="text-sm font-medium">
+                {new Date(meeting.started_at).toLocaleString()}
+              </p>
+              <p className="text-xs text-ink-3">
+                {meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB
+              </p>
+              <p className="text-xs text-ink-3 break-all">
+                {meeting.audio_path}
+              </p>
             </div>
             {["incomplete", "interrupted"].includes(meeting.status) && (
-              <button type="button" disabled={busy} onClick={() => void recover(meeting)} className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">{t("meeting.recover")}</button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void recover(meeting)}
+                className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
+              >
+                {t("meeting.recover")}
+              </button>
             )}
-            <button type="button" disabled={busy || meeting.status !== "ready"} onClick={() => {
-              if (meeting.remote_job_id) {
-                setJob(null);
-                setVisibleCount(150);
-                setTranscriptOpen(false);
-                setSpeakerNames({});
-                setServerUrl(meeting.remote_server_url || serverUrl);
-                setJobId(meeting.remote_job_id);
-              } else {
-                void upload(meeting);
-              }
-            }}
-              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
-              <UploadCloud size={16} />{meeting.remote_job_id ? t("meeting.resume") : t("meeting.process")}
+            <button
+              type="button"
+              disabled={busy || meeting.status !== "ready"}
+              onClick={() => {
+                if (meeting.remote_job_id) {
+                  setJob(null);
+                  setVisibleCount(150);
+                  setTranscriptOpen(false);
+                  setSpeakerNames({});
+                  setServerUrl(meeting.remote_server_url || serverUrl);
+                  setJobId(meeting.remote_job_id);
+                } else {
+                  void upload(meeting);
+                }
+              }}
+              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
+              <UploadCloud size={16} />
+              {meeting.remote_job_id
+                ? t("meeting.resume")
+                : t("meeting.process")}
             </button>
           </div>
         ))}
@@ -320,15 +421,36 @@ export const MeetingMode = () => {
 
       {job && (
         <div className="w-full flex flex-col gap-4 border border-line rounded-xl p-4">
-          <h2 className="font-semibold flex items-center gap-2"><ClipboardList size={18}/>{t("meeting.results")}</h2>
-          <p className="text-sm text-ink-3">{t("meeting.status")}: {job.status} · {job.stage ?? "-"}</p>
-          {job.error && <p role="alert" className="text-red-500 text-sm">{job.error}</p>}
+          <h2 className="font-semibold flex items-center gap-2">
+            <ClipboardList size={18} />
+            {t("meeting.results")}
+          </h2>
+          <p className="text-sm text-ink-3">
+            {t("meeting.status")}: {job.status} · {job.stage ?? "-"}
+          </p>
+          {job.error && (
+            <p role="alert" className="text-red-500 text-sm">
+              {job.error}
+            </p>
+          )}
           {job.status === "failed" && (
-            <button type="button" disabled={busy} onClick={() => void retry()} className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">{t("meeting.retry")}</button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void retry()}
+              className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
+              {t("meeting.retry")}
+            </button>
           )}
           {job.insights && (
             <>
-              <section><h3 className="font-semibold mb-2">{t("meeting.summary")}</h3><p className="text-sm whitespace-pre-wrap">{job.insights.summary}</p></section>
+              <section>
+                <h3 className="font-semibold mb-2">{t("meeting.summary")}</h3>
+                <p className="text-sm whitespace-pre-wrap">
+                  {job.insights.summary}
+                </p>
+              </section>
               {evidence(job.insights.decisions, t("meeting.decisions"))}
               {evidence(job.insights.tasks, t("meeting.tasks"))}
               {evidence(job.insights.open_questions, t("meeting.questions"))}
@@ -338,28 +460,62 @@ export const MeetingMode = () => {
             <section className="w-full flex flex-col gap-2">
               <h3 className="font-semibold">{t("meeting.speakerNames")}</h3>
               {speakers.map((speaker) => (
-                <label key={speaker} className="flex items-center gap-3 text-sm">
+                <label
+                  key={speaker}
+                  className="flex items-center gap-3 text-sm"
+                >
                   <span className="min-w-28">{speaker}</span>
-                  <input className="flex-1 rounded-lg border border-line bg-transparent px-3 py-2" placeholder={t("meeting.speakerPlaceholder")}
-                    value={speakerNames[speaker] ?? ""} onChange={(event) => setSpeakerNames((current) => ({ ...current, [speaker]: event.target.value }))} />
+                  <input
+                    className="flex-1 rounded-lg border border-line bg-transparent px-3 py-2"
+                    placeholder={t("meeting.speakerPlaceholder")}
+                    value={speakerNames[speaker] ?? ""}
+                    onChange={(event) =>
+                      setSpeakerNames((current) => ({
+                        ...current,
+                        [speaker]: event.target.value,
+                      }))
+                    }
+                  />
                 </label>
               ))}
             </section>
           )}
           {job.transcript && (
-            <details className="w-full" open={transcriptOpen || Boolean(job.error)} onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}>
-              <summary className="cursor-pointer font-semibold">{t("meeting.transcript")}</summary>
+            <details
+              className="w-full"
+              open={transcriptOpen || Boolean(job.error)}
+              onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}
+            >
+              <summary className="cursor-pointer font-semibold">
+                {t("meeting.transcript")}
+              </summary>
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
                 {job.transcript.slice(0, visibleCount).map((item) => (
-                  <p key={item.id} id={"meeting-" + item.id} className="text-sm border-b border-line pb-2">
-                    <span className="font-medium">{speakerNames[item.speaker] || item.speaker}</span>
-                    <span className="text-xs text-ink-3 ms-2">{formatTime(item.start)} · {item.id}</span>
-                    <span className="block whitespace-pre-wrap mt-1">{item.text}</span>
+                  <p
+                    key={item.id}
+                    id={"meeting-" + item.id}
+                    className="text-sm border-b border-line pb-2"
+                  >
+                    <span className="font-medium">
+                      {speakerNames[item.speaker] || item.speaker}
+                    </span>
+                    <span className="text-xs text-ink-3 ms-2">
+                      {formatTime(item.start)} · {item.id}
+                    </span>
+                    <span className="block whitespace-pre-wrap mt-1">
+                      {item.text}
+                    </span>
                   </p>
                 ))}
               </div>
               {job.transcript.length > visibleCount && (
-                <button type="button" className="mt-3 px-3 py-2 rounded-lg border border-line text-sm" onClick={() => setVisibleCount((count) => count + 150)}>{t("meeting.showMore")}</button>
+                <button
+                  type="button"
+                  className="mt-3 px-3 py-2 rounded-lg border border-line text-sm"
+                  onClick={() => setVisibleCount((count) => count + 150)}
+                >
+                  {t("meeting.showMore")}
+                </button>
               )}
             </details>
           )}
