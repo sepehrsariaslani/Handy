@@ -152,6 +152,7 @@ class MeetingJob(StrictModel):
     kind: Literal["meeting", "note"] = "meeting"
     generated_note_id: str | None = None
     clean_text: str | None = None
+    cleaned_block_count: int = Field(default=0, ge=0)
     title: str | None = None
     meeting_date: str | None = None
     status: Literal["queued", "processing", "completed", "failed"]
