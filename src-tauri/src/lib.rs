@@ -808,13 +808,41 @@ pub fn run(cli_args: CliArgs) {
             actions::TranscriptionCompleteEvent,
         ]);
 
-    #[cfg(debug_assertions)] // <- Only export on non-release builds
-    specta_builder
-        .export(
-            Typescript::default().bigint(BigIntExportBehavior::Number),
-            "../src/bindings.ts",
-        )
-        .expect("Failed to export typescript bindings");
+    #[cfg(debug_assertions)]
+    {
+        // tauri-specta exports every time the native app starts. Writing the
+        // same generated file on every restart needlessly reloads Vite, and
+        // rewriting it in place can race the frontend's TypeScript compiler.
+        // Export outside the watched source tree, then atomically replace the
+        // checked-in bindings only if their contents actually changed.
+        let target = std::path::Path::new("../src/bindings.ts");
+        let generated_path =
+            std::env::temp_dir().join(format!("handy-bindings-{}.ts", std::process::id()));
+        specta_builder
+            .export(
+                Typescript::default().bigint(BigIntExportBehavior::Number),
+                &generated_path,
+            )
+            .expect("Failed to export typescript bindings");
+        let generated =
+            std::fs::read(&generated_path).expect("Failed to read generated typescript bindings");
+        let changed = std::fs::read(target)
+            .map(|existing| existing != generated)
+            .unwrap_or(true);
+        if changed {
+            let next = target.with_extension("ts.next");
+            std::fs::write(&next, generated).expect("Failed to stage typescript bindings");
+            #[cfg(not(windows))]
+            std::fs::rename(&next, target).expect("Failed to replace typescript bindings");
+            #[cfg(windows)]
+            {
+                std::fs::write(target, std::fs::read(&next).unwrap())
+                    .expect("Failed to replace typescript bindings");
+                let _ = std::fs::remove_file(next);
+            }
+        }
+        let _ = std::fs::remove_file(generated_path);
+    }
 
     let invoke_handler = specta_builder.invoke_handler();
 
