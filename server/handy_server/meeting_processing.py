@@ -114,10 +114,11 @@ def wav_window(path: Path, start_frame: int, frames: int) -> tuple[Path, int]:
     return destination, len(samples) // 2
 
 class MeetingProcessor:
-    def __init__(self, store: MeetingStore, runtime, diarizer: Diarizer, analyzer=None):
+    def __init__(self, store: MeetingStore, runtime, diarizer: Diarizer, analyzer=None, aligner=None):
         self.store = store
         self.runtime = runtime
         self.diarizer = diarizer
+        self.aligner = aligner
         self.analyzer = analyzer or QwenMeetingAnalyzer(runtime.settings, runtime.llm)
         self._stop = asyncio.Event()
 
@@ -245,6 +246,32 @@ class MeetingProcessor:
                     names = label_segments(page, turns)
                     await asyncio.to_thread(self.store.update_speakers, job_id, names)
                     offset += len(page)
+
+                # Optional CTC word timestamps. Never split using guessed
+                # proportional timestamps or regenerate the original wording.
+                if self.aligner is not None and self.aligner.ready:
+                    await asyncio.to_thread(self.store.stage, job_id, "aligning")
+                    replacements = []
+                    offset = 0
+                    while True:
+                        page = await asyncio.to_thread(self.store.segments, job_id, offset, 250)
+                        if not page:
+                            break
+                        for row in page:
+                            if self._stop.is_set():
+                                return
+                            parts = await asyncio.to_thread(
+                                self.aligner.split, audio_path, row, turns, job.get("language")
+                            )
+                            if parts:
+                                replacements.append((row["id"], parts))
+                        offset += len(page)
+                    if replacements:
+                        await asyncio.to_thread(
+                            self.store.replace_aligned, job_id, replacements
+                        )
+                        LOG.info("meeting.word_alignment_split job=%s blocks=%d",
+                                 job_id, len(replacements))
 
         utterances = []
         offset = 0
