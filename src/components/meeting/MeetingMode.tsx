@@ -512,7 +512,7 @@ export const MeetingMode = () => {
             )}
             <button
               type="button"
-              disabled={busy || meeting.status !== "ready"}
+              disabled={busy || !authToken || meeting.status !== "ready"}
               onClick={() => {
                 if (meeting.remote_job_id) {
                   setJob(null);
