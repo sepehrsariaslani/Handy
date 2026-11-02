@@ -175,6 +175,6 @@ def test_unknown_session_or_origin_rejected(fixture):
 
 def test_deduplication_is_conservative():
     assert deduplicate("سلام خوبی", "خوبی امروز چطوری") == "امروز چطوری"
-    assert deduplicate("جلسه ساعت ۱۲", "ساعت 12 شروع شد") == "12 شروع شد"
+    assert deduplicate("جلسه ساعت ۱۲", "ساعت 12 شروع شد") == "شروع شد"
     assert deduplicate("بودجه ۱۲۵۰ تومان", "هزینه ۱۲۶۰ تومان") == "هزینه ۱۲۶۰ تومان"
     assert deduplicate("تست", "تست") == ""

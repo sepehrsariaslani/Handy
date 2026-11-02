@@ -250,9 +250,10 @@ export class LiveStreamSession {
   }
 
   private async saveResult(result: LiveResult): Promise<void> {
-    if (!this.session) return;
+    const session = this.session;
+    if (!session) return;
     await transact(RESULTS, "readwrite", (store) => store.put({
-      ...result, id: this.session + ":" + result.sequence, session: this.session,
+      ...result, id: session + ":" + result.sequence, session,
     } satisfies StoredResult));
     this.callbacks.result(result);
   }
