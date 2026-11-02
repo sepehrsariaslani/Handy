@@ -2,9 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, CalendarDays, ChevronRight, Mic, Plus, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  ChevronRight,
+  Mic,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
-import { LOCAL_AI_TEST_MODE, loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import {
+  LOCAL_AI_TEST_MODE,
+  loadServerUrl,
+  saveServerUrl,
+} from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { RecordingPill } from "@/components/ui/RecordingPill";
@@ -20,7 +31,13 @@ type MeetingInfo = {
   remote_job_id: string | null;
   remote_server_url: string | null;
 };
-type Utterance = { id: string; speaker: string; start: number; end: number; text: string };
+type Utterance = {
+  id: string;
+  speaker: string;
+  start: number;
+  end: number;
+  text: string;
+};
 type Evidence = {
   text: string;
   source_ids: string[];
@@ -51,8 +68,13 @@ type TranscriptPage = { items: Utterance[]; offset: number; total: number };
 const readError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 const clock = (seconds: number) =>
-  [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.floor(seconds % 60)]
-    .map((part) => String(part).padStart(2, "0")).join(":");
+  [
+    Math.floor(seconds / 3600),
+    Math.floor((seconds % 3600) / 60),
+    Math.floor(seconds % 60),
+  ]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
 
 export const MeetingMode = () => {
   const { t } = useTranslation();
@@ -77,7 +99,8 @@ export const MeetingMode = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sourcePreview, setSourcePreview] = useState<Utterance | null>(null);
-  const selected = meetings.find((meeting) => meeting.id === selectedId) ?? null;
+  const selected =
+    meetings.find((meeting) => meeting.id === selectedId) ?? null;
   const recording = Boolean(currentId && currentId === selectedId);
   const speakers = useMemo(
     () => [...new Set(job?.transcript?.map((part) => part.speaker) ?? [])],
@@ -109,7 +132,10 @@ export const MeetingMode = () => {
       if (active) unlisten = stop;
       else stop();
     });
-    return () => { active = false; unlisten?.(); };
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -118,7 +144,9 @@ export const MeetingMode = () => {
     const load = async () => {
       try {
         const result = await invoke<MeetingJob>("get_meeting_job", {
-          serverUrl, apiKey: authToken, jobId,
+          serverUrl,
+          apiKey: authToken,
+          jobId,
         });
         if (!alive) return;
         setJob((previous) =>
@@ -136,19 +164,41 @@ export const MeetingMode = () => {
     };
     const timer = window.setInterval(() => void load(), 5000);
     void load();
-    return () => { alive = false; window.clearInterval(timer); };
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
   }, [jobId, authToken, serverUrl]);
 
   // Fill missing local metadata only after the model has completed processing.
   useEffect(() => {
-    if (!job || job.status !== "completed" || !selected || selected.remote_job_id !== job.id) return;
-    if ((selected.title || !job.title) && (selected.meeting_date || !job.meeting_date)) return;
+    if (
+      !job ||
+      job.status !== "completed" ||
+      !selected ||
+      selected.remote_job_id !== job.id
+    )
+      return;
+    if (
+      (selected.title || !job.title) &&
+      (selected.meeting_date || !job.meeting_date)
+    )
+      return;
     let alive = true;
     void invoke<MeetingInfo>("update_meeting_metadata", {
-      id: selected.id, title: job.title || null, meetingDate: job.meeting_date || null,
-    }).then(() => { if (alive) void refresh(); })
-      .catch((error) => { if (alive) toast.error(readError(error)); });
-    return () => { alive = false; };
+      id: selected.id,
+      title: job.title || null,
+      meetingDate: job.meeting_date || null,
+    })
+      .then(() => {
+        if (alive) void refresh();
+      })
+      .catch((error) => {
+        if (alive) toast.error(readError(error));
+      });
+    return () => {
+      alive = false;
+    };
   }, [job, selected, refresh]);
 
   const resetResult = () => {
@@ -166,7 +216,9 @@ export const MeetingMode = () => {
     resetResult();
     try {
       const result = await invoke<MeetingJob>("submit_meeting", {
-        id: meeting.id, serverUrl, apiKey: authToken,
+        id: meeting.id,
+        serverUrl,
+        apiKey: authToken,
       });
       setJob(result);
       setJobId(result.id);
@@ -209,7 +261,8 @@ export const MeetingMode = () => {
     setBusy(true);
     try {
       const info = await invoke<MeetingInfo>("start_meeting", {
-        title: draftTitle.trim() || null, meetingDate: draftDate || null,
+        title: draftTitle.trim() || null,
+        meetingDate: draftDate || null,
       });
       setSelectedId(info.id);
       setCurrentId(info.id);
@@ -233,14 +286,18 @@ export const MeetingMode = () => {
       // A single Stop is sufficient: upload, Whisper, Qwen and task storage
       // all happen without a user-visible Process or Import step.
       if (!authToken) {
-        toast.error("Recording saved locally. Connect your AI server to sync it.");
+        toast.error(
+          "Recording saved locally. Connect your AI server to sync it.",
+        );
         return;
       }
       setUploading(true);
       resetResult();
       setTranscriptOpen(true);
       const result = await invoke<MeetingJob>("submit_meeting", {
-        id: info.id, serverUrl, apiKey: authToken,
+        id: info.id,
+        serverUrl,
+        apiKey: authToken,
       });
       setJob(result);
       setJobId(result.id);
@@ -255,7 +312,8 @@ export const MeetingMode = () => {
   };
 
   const recover = async () => {
-    if (!selected || busy || !window.confirm(t("meeting.recoverConfirm"))) return;
+    if (!selected || busy || !window.confirm(t("meeting.recoverConfirm")))
+      return;
     setBusy(true);
     try {
       await invoke("recover_meeting", { id: selected.id });
@@ -272,7 +330,9 @@ export const MeetingMode = () => {
     setBusy(true);
     try {
       const result = await invoke<MeetingJob>("retry_meeting_job", {
-        serverUrl, apiKey: authToken, jobId,
+        serverUrl,
+        apiKey: authToken,
+        jobId,
       });
       setJob(result);
     } catch (error) {
@@ -292,12 +352,19 @@ export const MeetingMode = () => {
     setLoadingMore(true);
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
-        serverUrl, apiKey: authToken || null, jobId: job.id, offset, limit: 150,
+        serverUrl,
+        apiKey: authToken || null,
+        jobId: job.id,
+        offset,
+        limit: 150,
       });
       setJob((current) => {
         if (!current || current.id !== job.id) return current;
-        const combined = new Map([...(current.transcript ?? []), ...page.items]
-          .map((part) => [part.id, part] as const));
+        const combined = new Map(
+          [...(current.transcript ?? []), ...page.items].map(
+            (part) => [part.id, part] as const,
+          ),
+        );
         return {
           ...current,
           transcript: [...combined.values()].sort((a, b) => a.start - b.start),
@@ -317,8 +384,13 @@ export const MeetingMode = () => {
     const offset = job?.transcript?.findIndex((part) => part.id === id) ?? -1;
     if (offset >= 0) {
       setVisibleCount((current) => Math.max(current, offset + 1));
-      window.setTimeout(() => document.getElementById("meeting-" + id)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+      window.setTimeout(
+        () =>
+          document
+            .getElementById("meeting-" + id)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        60,
+      );
       return;
     }
     if (!job) return;
@@ -326,8 +398,11 @@ export const MeetingMode = () => {
     if (!Number.isSafeInteger(ordinal) || ordinal <= 0) return;
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
-        serverUrl, apiKey: authToken || null,
-        jobId: job.id, offset: ordinal - 1, limit: 1,
+        serverUrl,
+        apiKey: authToken || null,
+        jobId: job.id,
+        offset: ordinal - 1,
+        limit: 1,
       });
       setSourcePreview(page.items.find((part) => part.id === id) ?? null);
     } catch (error) {
@@ -346,26 +421,44 @@ export const MeetingMode = () => {
             <p>{item.text}</p>
             {(item.assignee || item.due_date) && (
               <p className="text-xs text-ink-3 mt-1">
-                {[item.assignee && (speakerNames[item.assignee] || item.assignee),
-                  item.due_date].filter(Boolean).join(" · ")}
+                {[
+                  item.assignee &&
+                    (speakerNames[item.assignee] || item.assignee),
+                  item.due_date,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             )}
             <div className="flex gap-2 flex-wrap mt-1">
               {item.source_ids?.map((id) => (
-                <button key={id} type="button" onClick={() => void jumpToSource(id)}
-                  className="text-xs text-logo-primary underline">{id}</button>
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => void jumpToSource(id)}
+                  className="text-xs text-logo-primary underline"
+                >
+                  {id}
+                </button>
               ))}
             </div>
           </div>
         ))}
-        {!rows?.length && <p className="text-sm text-ink-3">{t("meeting.none")}</p>}
+        {!rows?.length && (
+          <p className="text-sm text-ink-3">{t("meeting.none")}</p>
+        )}
       </div>
     </details>
   );
 
-  const displayTitle = job?.title || selected?.title || draftTitle ||
+  const displayTitle =
+    job?.title ||
+    selected?.title ||
+    draftTitle ||
     t("meeting.untitled", { defaultValue: "New meeting" });
-  const displayDate = job?.meeting_date || selected?.meeting_date ||
+  const displayDate =
+    job?.meeting_date ||
+    selected?.meeting_date ||
     (selected?.started_at ? selected.started_at.slice(0, 10) : null);
 
   return (
@@ -375,7 +468,10 @@ export const MeetingMode = () => {
           <Mic size={22} /> {t("meeting.title")}
         </h1>
         <p className="text-sm text-ink-3 mt-1">
-          {t("meeting.autoHint", { defaultValue: "Record once. Transcript, summary and tasks are organized automatically." })}
+          {t("meeting.autoHint", {
+            defaultValue:
+              "Record once. Transcript, summary and tasks are organized automatically.",
+          })}
         </p>
       </header>
       {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
@@ -383,18 +479,34 @@ export const MeetingMode = () => {
         <details className="rounded-xl border border-line p-3 text-sm">
           <summary className="cursor-pointer">{t("meeting.server")}</summary>
           <div className="mt-3 flex flex-col gap-2">
-            <input type="url" aria-label={t("meeting.serverUrl")} value={serverUrl}
+            <input
+              type="url"
+              aria-label={t("meeting.serverUrl")}
+              value={serverUrl}
               className="border border-line bg-transparent rounded-lg px-3 py-2"
-              onChange={(event) => { setServerUrl(event.target.value); setApiKey(""); }}
+              onChange={(event) => {
+                setServerUrl(event.target.value);
+                setApiKey("");
+              }}
               onBlur={() => {
-                try { setServerUrl(saveServerUrl(serverUrl)); }
-                catch (error) { toast.error(readError(error)); }
-              }} />
-            <input type="password" autoComplete="off" value={apiKey}
+                try {
+                  setServerUrl(saveServerUrl(serverUrl));
+                } catch (error) {
+                  toast.error(readError(error));
+                }
+              }}
+            />
+            <input
+              type="password"
+              autoComplete="off"
+              value={apiKey}
               aria-label={t("meeting.apiKey")}
-              placeholder={localApiKey ? "Local API key detected" : t("meeting.apiKey")}
+              placeholder={
+                localApiKey ? "Local API key detected" : t("meeting.apiKey")
+              }
               className="border border-line bg-transparent rounded-lg px-3 py-2"
-              onChange={(event) => setApiKey(event.target.value)} />
+              onChange={(event) => setApiKey(event.target.value)}
+            />
           </div>
         </details>
       )}
@@ -404,120 +516,196 @@ export const MeetingMode = () => {
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium">{t("meeting.saved")}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={() => void refresh()}
-                aria-label={t("meeting.refresh")} className="border border-line rounded-lg p-2">
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                aria-label={t("meeting.refresh")}
+                className="border border-line rounded-lg p-2"
+              >
                 <RefreshCw size={16} />
               </button>
-              <button type="button" disabled={Boolean(currentId)} onClick={newMeeting}
-                className="bg-logo-primary text-white rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
-                <Plus size={16} /> {t("meeting.new", { defaultValue: "New meeting" })}
+              <button
+                type="button"
+                disabled={Boolean(currentId)}
+                onClick={newMeeting}
+                className="bg-logo-primary text-white rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                <Plus size={16} />{" "}
+                {t("meeting.new", { defaultValue: "New meeting" })}
               </button>
             </div>
           </div>
           <div className="flex flex-col gap-1">
             {meetings.map((meeting) => (
-              <button key={meeting.id} type="button" onClick={() => openMeeting(meeting)}
-                className="rounded-lg text-start px-3 py-3 flex items-center justify-between gap-3 hover:bg-wash/30">
+              <button
+                key={meeting.id}
+                type="button"
+                onClick={() => openMeeting(meeting)}
+                className="rounded-lg text-start px-3 py-3 flex items-center justify-between gap-3 hover:bg-wash/30"
+              >
                 <span className="min-w-0">
                   <span className="block text-sm font-medium truncate">
-                    {meeting.title || t("meeting.untitled", { defaultValue: "Meeting" })}
+                    {meeting.title ||
+                      t("meeting.untitled", { defaultValue: "Meeting" })}
                   </span>
                   <span className="block text-xs text-ink-3 mt-1">
-                    {meeting.meeting_date || new Date(meeting.started_at).toLocaleDateString()}
-                    {" · "}{meeting.status}
+                    {meeting.meeting_date ||
+                      new Date(meeting.started_at).toLocaleDateString()}
+                    {" · "}
+                    {meeting.status}
                   </span>
                 </span>
                 <ChevronRight size={17} className="text-ink-3 shrink-0" />
               </button>
             ))}
             {!meetings.length && (
-              <p className="py-8 text-center text-sm text-ink-3">{t("meeting.noRecordings")}</p>
+              <p className="py-8 text-center text-sm text-ink-3">
+                {t("meeting.noRecordings")}
+              </p>
             )}
           </div>
         </section>
       ) : (
         <section className="rounded-xl border border-line p-4 flex flex-col gap-4">
-          <button type="button" disabled={recording || busy || uploading}
-            onClick={() => { setExpanded(false); resetResult(); }}
-            className="inline-flex w-fit items-center gap-2 text-sm text-ink-2 disabled:opacity-50">
+          <button
+            type="button"
+            disabled={recording || busy || uploading}
+            onClick={() => {
+              setExpanded(false);
+              resetResult();
+            }}
+            className="inline-flex w-fit items-center gap-2 text-sm text-ink-2 disabled:opacity-50"
+          >
             <ArrowLeft size={16} /> {t("onboarding.shell.back")}
           </button>
           {!selected ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-sm flex flex-col gap-1">
-                {t("meeting.meetingName", { defaultValue: "Meeting title (optional)" })}
-                <input value={draftTitle} maxLength={180}
-                  placeholder={t("meeting.autoName", { defaultValue: "AI will suggest a title" })}
+                {t("meeting.meetingName", {
+                  defaultValue: "Meeting title (optional)",
+                })}
+                <input
+                  value={draftTitle}
+                  maxLength={180}
+                  placeholder={t("meeting.autoName", {
+                    defaultValue: "AI will suggest a title",
+                  })}
                   onChange={(event) => setDraftTitle(event.target.value)}
-                  className="border border-line bg-transparent rounded-lg px-3 py-2" />
+                  className="border border-line bg-transparent rounded-lg px-3 py-2"
+                />
               </label>
               <label className="text-sm flex flex-col gap-1">
-                <span className="flex items-center gap-1"><CalendarDays size={15} />
-                  {t("meeting.meetingDate", { defaultValue: "Date (optional)" })}
+                <span className="flex items-center gap-1">
+                  <CalendarDays size={15} />
+                  {t("meeting.meetingDate", {
+                    defaultValue: "Date (optional)",
+                  })}
                 </span>
-                <input type="date" value={draftDate}
+                <input
+                  type="date"
+                  value={draftDate}
                   onChange={(event) => setDraftDate(event.target.value)}
-                  className="border border-line bg-transparent rounded-lg px-3 py-2" />
+                  className="border border-line bg-transparent rounded-lg px-3 py-2"
+                />
               </label>
             </div>
           ) : (
             <div>
               <h2 className="text-lg font-semibold">{displayTitle}</h2>
-              <p className="text-xs text-ink-3 mt-1">{displayDate} · {selected.status}</p>
+              <p className="text-xs text-ink-3 mt-1">
+                {displayDate} · {selected.status}
+              </p>
             </div>
           )}
           {(!selected || recording) && (
             <label className="text-sm flex gap-2 items-start">
-              <input type="checkbox" checked={consent} disabled={recording}
-                onChange={(event) => setConsent(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={consent}
+                disabled={recording}
+                onChange={(event) => setConsent(event.target.checked)}
+              />
               <span>{t("meeting.consent")}</span>
             </label>
           )}
           <div className="rounded-xl bg-wash/20 border border-line p-3 flex flex-col items-start gap-3">
             {recording ? (
-              <RecordingPill level={level} disabled={busy} onStop={() => void stop()}
-                label={t("meeting.recordingNow")} />
+              <RecordingPill
+                level={level}
+                disabled={busy}
+                onStop={() => void stop()}
+                label={t("meeting.recordingNow")}
+              />
             ) : !selected ? (
-              <button type="button" disabled={!consent || busy} onClick={() => void start()}
-                className="rounded-full bg-logo-primary text-white px-4 py-2 text-sm inline-flex gap-2 items-center disabled:opacity-50">
+              <button
+                type="button"
+                disabled={!consent || busy}
+                onClick={() => void start()}
+                className="rounded-full bg-logo-primary text-white px-4 py-2 text-sm inline-flex gap-2 items-center disabled:opacity-50"
+              >
                 <Mic size={16} /> {t("meeting.start")}
               </button>
             ) : (
               <p className="text-xs text-ink-3">
-                {uploading ? t("meeting.autoProcessing") :
-                  t("meeting.storageNotice")}
+                {uploading
+                  ? t("meeting.autoProcessing")
+                  : t("meeting.storageNotice")}
               </p>
             )}
-            {recording && <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>}
+            {recording && (
+              <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
+            )}
           </div>
 
-          {selected && ["incomplete", "interrupted"].includes(selected.status) && (
-            <button type="button" disabled={busy} onClick={() => void recover()}
-              className="w-fit rounded-lg border border-line px-3 py-2 text-sm">
-              {t("meeting.recover")}
-            </button>
-          )}
-          {selected?.status === "ready" && !selected.remote_job_id && !uploading && (
-            <button type="button" disabled={busy || !authToken}
-              onClick={() => void upload(selected)}
-              className="w-fit rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
-              {t("meeting.retrySync", { defaultValue: "Resume automatic sync" })}
-            </button>
-          )}
+          {selected &&
+            ["incomplete", "interrupted"].includes(selected.status) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void recover()}
+                className="w-fit rounded-lg border border-line px-3 py-2 text-sm"
+              >
+                {t("meeting.recover")}
+              </button>
+            )}
+          {selected?.status === "ready" &&
+            !selected.remote_job_id &&
+            !uploading && (
+              <button
+                type="button"
+                disabled={busy || !authToken}
+                onClick={() => void upload(selected)}
+                className="w-fit rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
+              >
+                {t("meeting.retrySync", {
+                  defaultValue: "Resume automatic sync",
+                })}
+              </button>
+            )}
           {(uploading || (job && job.status !== "completed")) && (
             <div role="status" className="flex flex-col gap-2">
               <p className="text-sm text-ink-3">
-                {uploading ? t("meeting.autoProcessing") :
-                  `${t("meeting.status")}: ${job?.stage || job?.status}`}
+                {uploading
+                  ? t("meeting.autoProcessing")
+                  : `${t("meeting.status")}: ${job?.stage || job?.status}`}
               </p>
               {job?.duration && (
-                <progress className="w-full h-2" max={job.duration}
-                  value={job.processed_seconds ?? 0} />
+                <progress
+                  className="w-full h-2"
+                  max={job.duration}
+                  value={job.processed_seconds ?? 0}
+                />
               )}
-              {job?.error && <p className="text-red-500 text-sm">{job.error}</p>}
+              {job?.error && (
+                <p className="text-red-500 text-sm">{job.error}</p>
+              )}
               {job?.status === "failed" && (
-                <button type="button" disabled={busy} onClick={() => void retry()}
-                  className="rounded-lg border border-line px-3 py-2 text-sm w-fit">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void retry()}
+                  className="rounded-lg border border-line px-3 py-2 text-sm w-fit"
+                >
                   {t("meeting.retry")}
                 </button>
               )}
@@ -526,46 +714,72 @@ export const MeetingMode = () => {
           {job?.insights && (
             <div className="flex flex-col gap-4">
               <section>
-                <h3 className="text-sm font-semibold mb-2">{t("meeting.summary")}</h3>
-                <p className="text-sm whitespace-pre-wrap">{job.insights.summary}</p>
+                <h3 className="text-sm font-semibold mb-2">
+                  {t("meeting.summary")}
+                </h3>
+                <p className="text-sm whitespace-pre-wrap">
+                  {job.insights.summary}
+                </p>
               </section>
               {evidence(job.insights.tasks, t("meeting.tasks"))}
               {evidence(job.insights.decisions, t("meeting.decisions"))}
               {evidence(job.insights.open_questions, t("meeting.questions"))}
               <p className="text-xs text-ink-3">
-                {t("meeting.tasksSaved", { defaultValue: "Action items are saved automatically in Tasks. Review suggested owners and deadlines." })}
+                {t("meeting.tasksSaved", {
+                  defaultValue:
+                    "Action items are saved automatically in Tasks. Review suggested owners and deadlines.",
+                })}
               </p>
             </div>
           )}
           {job && (job.transcript_count || job.transcript?.length) ? (
-            <details open={transcriptOpen} onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}
-              className="border-t border-line pt-3">
-              <summary className="cursor-pointer text-sm font-medium">{t("meeting.transcript")}</summary>
+            <details
+              open={transcriptOpen}
+              onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}
+              className="border-t border-line pt-3"
+            >
+              <summary className="cursor-pointer text-sm font-medium">
+                {t("meeting.transcript")}
+              </summary>
               {speakers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {speakers.map((speaker) => (
-                    <label key={speaker} className="text-xs flex items-center gap-2">
+                    <label
+                      key={speaker}
+                      className="text-xs flex items-center gap-2"
+                    >
                       {speaker}
-                      <input className="rounded-lg border border-line bg-transparent px-2 py-1"
+                      <input
+                        className="rounded-lg border border-line bg-transparent px-2 py-1"
                         aria-label={speaker}
                         placeholder={t("meeting.speakerPlaceholder")}
                         value={speakerNames[speaker] || ""}
-                        onChange={(event) => setSpeakerNames((current) => ({
-                          ...current, [speaker]: event.target.value,
-                        }))} />
+                        onChange={(event) =>
+                          setSpeakerNames((current) => ({
+                            ...current,
+                            [speaker]: event.target.value,
+                          }))
+                        }
+                      />
                     </label>
                   ))}
                 </div>
               )}
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
                 {job.transcript?.slice(0, visibleCount).map((part) => (
-                  <div key={part.id} id={"meeting-" + part.id}
-                    className="border-b border-line pb-2">
+                  <div
+                    key={part.id}
+                    id={"meeting-" + part.id}
+                    className="border-b border-line pb-2"
+                  >
                     <p className="text-xs text-ink-3">
                       {speakerNames[part.speaker] || part.speaker}
-                      {" · "}{clock(part.start)} · {part.id}
+                      {" · "}
+                      {clock(part.start)} · {part.id}
                     </p>
-                    <p className="text-sm whitespace-pre-wrap mt-1">{part.text}</p>
+                    <p className="text-sm whitespace-pre-wrap mt-1">
+                      {part.text}
+                    </p>
                   </div>
                 ))}
                 {sourcePreview && (
@@ -574,9 +788,14 @@ export const MeetingMode = () => {
                   </div>
                 )}
               </div>
-              {(job.transcript_count ?? job.transcript?.length ?? 0) > visibleCount && (
-                <button type="button" disabled={loadingMore} onClick={() => void loadMore()}
-                  className="mt-3 rounded-lg border border-line px-3 py-2 text-sm">
+              {(job.transcript_count ?? job.transcript?.length ?? 0) >
+                visibleCount && (
+                <button
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
+                  className="mt-3 rounded-lg border border-line px-3 py-2 text-sm"
+                >
                   {t("meeting.showMore")}
                 </button>
               )}

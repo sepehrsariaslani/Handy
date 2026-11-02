@@ -408,8 +408,7 @@ pub fn update_meeting_metadata(
     title: Option<String>,
     meeting_date: Option<String>,
 ) -> Result<MeetingInfo, String> {
-    if id.is_empty() || id.len() > 80
-        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    if id.is_empty() || id.len() > 80 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
         return Err("Invalid meeting ID".into());
     }
@@ -422,9 +421,8 @@ pub fn update_meeting_metadata(
             .filter(|s| !s.is_empty() && s.chars().count() <= 180);
     }
     if info.meeting_date.is_none() {
-        info.meeting_date = meeting_date.filter(|s| {
-            chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
-        });
+        info.meeting_date =
+            meeting_date.filter(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok());
     }
     write_info(&directory, &info)?;
     Ok(info)
