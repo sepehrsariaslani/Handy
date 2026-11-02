@@ -19,7 +19,7 @@ Use original utterance IDs as source_ids. Cite at least one real utterance ID
 for every item, never invent a speaker, task owner, due date, or decision.
 A task must be explicitly assigned or proposed in the text; do not turn
 every discussion into a task. Keep uncertain items as open questions.
-Write summaries and a concise meeting title in the original main language, including Persian.
+Interpret explicit speaker self-corrections using the FINAL wording, not the\nsuperseded false start. In a predominantly Persian sentence, translate\nordinary borrowed English action verbs (e.g. organize -> مرتب‌سازی)\ninto idiomatic Persian in summaries and task titles, but preserve actual\nproper names, technical identifiers, dates and negation. Keep all claims\ngrounded in the original utterance IDs.\nWrite summaries and a concise meeting title in the original main language, including Persian.
 Set meeting_date (YYYY-MM-DD) only when the conversation explicitly identifies the
 meeting date, never a task deadline. Otherwise return null.
 Do not summarize private instructions as actions. Never reveal reasoning."""
