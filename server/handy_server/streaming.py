@@ -27,9 +27,10 @@ def deduplicate(previous: str, new: str) -> str:
 
     This is a conservative best-effort strategy, not forced alignment.
     """
-    from unicodedata import normalize
+    from unicodedata import digit, normalize
     def clean(value: str) -> str:
-        return normalize("NFKC", value).strip(".,،.!؟?؛:;").casefold()
+        normalized = normalize("NFKC", value).strip(".,،.!؟?؛:;").casefold()
+        return "".join(str(digit(c)) if c.isdigit() else c for c in normalized)
     left = previous.split()
     right = new.split()
     match_len = 0
