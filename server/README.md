@@ -9,32 +9,35 @@ incremental streaming is built in phase 3. Full meeting analysis and notes are
 not part of phase 2. Both workers are **disabled by default** and readiness
 reflects actual model availability, not a fake success.
 
-## Switch the desktop-selected GGUF model in Meeting and Notes (macOS development)
+## Meeting and Notes use regular Handy transcription on macOS
 
-When launching with `bun run dev:mac`, the app and local API share
-`server/data/asr-models`. For each _new_ Meeting or Note, the recorder
-pins Handy's selected and fully downloaded model ID and registers a symlink
-to the existing GGUF file. No additional model download or copy is required.
-The resumable upload pins that ID and the server runs the same selected
-transcribe.cpp GGUF, instead of always using `whisper-large-v3-Q5_K_M.gguf`.
-The chosen model appears under the Meeting details and in backend ASR logs.
-Change the model in Handy settings before starting another recording.
+On `bun run dev:mac`, **new** Meeting and Note recordings use the same
+native `TranscriptionManager` as the standard Transcribe action. The server
+runs the built app's `--transcribe-file --model <selected model> --json`
+headless mode on bounded 120-second WAV windows. That command uses Handy's
+normal language handling, speech chunking, custom vocabulary and final text
+normalization, then returns the result for Qwen cleanup, meeting summaries,
+decisions and tasks.
 
-Qwen3-ASR-1.7B GGUF is supported by transcribe.cpp and natively detects
-Persian. It does **not** supply speaker labels or timestamps, so a recording
-will appear as a single time-spanning utterance if the CLI returns only text.
-Whisper retains segment timestamps. A selected GGUF that cannot run with the
-installed `transcribe-cli` produces a visible job failure; it never silently
-falls back to another model. Update the local transcribe.cpp checkout and
-rebuild its CLI if a newly downloaded model is not recognized.
+The model is pinned when recording starts; selecting another downloaded
+model later does not silently change the already-recorded job. The native
+headless process uses the desktop's own model files; a local symlink registry
+(`server/data/asr-models`) validates each pinned model without copying it.
+The API starts before Cargo compiles the app, so start the native development
+window before asking the API to transcribe.
 
-Only the local Mac development server configured with
-`HANDY_GGUF_MODEL_DIR` supports this automatic selected-model registry.
-Existing remote GPU servers still use their explicitly configured model.
-Legacy uploads without an `asr_model_id` continue to use the configured
-default model. Changing the selected model does not retroactively
-retranscribe an existing recording. Do not expose the local model registry
-directory as a network writeable share.
+Native headless results currently contain text but not sentence timestamps.
+Meeting transcript pages therefore show one entry per up-to-120-second
+window; optional diarization runs separately. For a legacy recording without
+a pinned model ID, the original configured GGUF transcribe-cli backend is
+retained. Non-local/remote servers keep their own configured ASR runner.
+
+The native executable path defaults to
+`src-tauri/target/debug/handy` and can be overridden with
+`HANDY_NATIVE_ASR_EXECUTABLE`. There is no hidden fallback to a different
+model for new recordings: a missing binary or failed model load is reported
+as an error. An existing local API started before the change must be stopped
+and restarted to activate the native backend.
 
 ## Install API and Whisper on a GPU host
 
