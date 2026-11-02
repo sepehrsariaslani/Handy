@@ -224,7 +224,7 @@ def create_app(
 
     attach_stream_routes(app, config, store, models, require_auth)
     attach_meeting_routes(app, config, meeting_store, processor, require_auth)
-    attach_upload_routes(app, config, meeting_store, require_auth)
+    attach_upload_routes(app, config, meeting_store, require_auth, models)
     attach_notes_routes(app, config, meeting_store, models, require_auth)
     attach_memory_routes(app, config, models, require_auth)
     attach_task_routes(app, config, meeting_store, require_auth)
