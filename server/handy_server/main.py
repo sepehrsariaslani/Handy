@@ -37,6 +37,7 @@ from .meeting_api import attach_meeting_routes
 from .upload_api import attach_upload_routes
 from .meeting_processing import MeetingProcessor
 from .diarization import Diarizer
+from .meeting_alignment import WordAligner
 from .streaming import attach_stream_routes
 from .workers import InferenceRuntime, WorkerFailure, WorkerUnavailable
 
@@ -65,7 +66,8 @@ def create_app(
     models = runtime or InferenceRuntime(config)
     meeting_store = MeetingStore(Path(config.db_path))
     diarizer = Diarizer(config.diarization_enabled, config.hf_token, config.diarization_max_hours)
-    processor = MeetingProcessor(meeting_store, models, diarizer)
+    aligner = WordAligner(config.word_alignment_enabled, config.word_alignment_device)
+    processor = MeetingProcessor(meeting_store, models, diarizer, aligner=aligner)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
