@@ -1,9 +1,9 @@
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::ModelManager;
-use sha2::{Digest, Sha256};
 use chrono::Utc;
 use handy_recorder::{AudioChunk, Channels, EndReason, Recorder, RecorderConfig, Sink};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{BufWriter, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -255,7 +255,11 @@ fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
             }
             Err(error) => return Err(format!("Cannot register model: {error}")),
         }
-        log::info!("Meeting/Notes ASR model selected: {} (registered as {})", selected, safe_file);
+        log::info!(
+            "Meeting/Notes ASR model selected: {} (registered as {})",
+            selected,
+            safe_file
+        );
         Ok(Some(selected))
     }
     #[cfg(not(unix))]
@@ -849,17 +853,14 @@ mod asr_registry_tests {
             asr_registry_filename("abc"),
             "asr-ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.gguf"
         );
-        let catalog_id =
-            "handy-computer/whisper-large-v3-gguf/whisper-large-v3-Q5_K_M.gguf";
+        let catalog_id = "handy-computer/whisper-large-v3-gguf/whisper-large-v3-Q5_K_M.gguf";
         let path = asr_registry_filename(catalog_id);
         assert_eq!(path.len(), 73);
         assert!(!path.contains('/'));
         assert_ne!(path, asr_registry_filename("abc"));
         assert_ne!(
             path,
-            asr_registry_filename(
-                "handy-computer/qwen3-asr-1.7b-gguf/qwen3-asr-1.7b-Q5_K_M.gguf"
-            )
+            asr_registry_filename("handy-computer/qwen3-asr-1.7b-gguf/qwen3-asr-1.7b-Q5_K_M.gguf")
         );
     }
 }
