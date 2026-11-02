@@ -175,14 +175,11 @@ export class HandyAiClient {
     if (!/^[0-9a-f]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
     if (!/^(SPEAKER_[0-9]{2,}|MANUAL_[0-9]{2,})$/.test(speaker))
       throw new Error("Invalid speaker ID");
-    return this.request(
-      "/v1/meetings/" + jobId + "/speakers/" + speaker,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      },
-    );
+    return this.request(`/v1/meetings/${jobId}/speakers/${speaker}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
   }
 
   correctMeetingSegmentSpeaker(
@@ -193,15 +190,12 @@ export class HandyAiClient {
     if (!/^[0-9a-f]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
     if (!/^[A-Za-z0-9._-]{1,80}$/.test(segmentId))
       throw new Error("Invalid segment ID");
-    return this.request(
-      "/v1/meetings/" + jobId + "/transcript/" +
-        encodeURIComponent(segmentId) + "/speaker",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ speaker }),
-      },
-    );
+    const path = `/v1/meetings/${jobId}/transcript/${encodeURIComponent(segmentId)}/speaker`;
+    return this.request(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speaker }),
+    });
   }
 
   importMeetingNote(jobId: string): Promise<AiNote> {
