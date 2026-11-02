@@ -9,7 +9,12 @@ const SESSION_ID_KEY = "handy.live.sessionId.v1";
 const CHUNKS = "chunks";
 const RESULTS = "results";
 
-type Chunk = { id: string; session: string; sequence: number; pcm: ArrayBuffer };
+type Chunk = {
+  id: string;
+  session: string;
+  sequence: number;
+  pcm: ArrayBuffer;
+};
 export type LiveResult = {
   type: "final";
   sequence: number;
@@ -44,10 +49,21 @@ async function transact<T>(
     const tx = db.transaction(storeName, mode);
     const request = op(tx.objectStore(storeName));
     let value: T;
-    request.onsuccess = () => { value = request.result; };
-    tx.oncomplete = () => { db.close(); resolve(value); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
-    tx.onabort = () => { db.close(); reject(tx.error); };
+    request.onsuccess = () => {
+      value = request.result;
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve(value);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -56,12 +72,23 @@ async function oldestPending(session: string): Promise<Chunk | undefined> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CHUNKS, "readonly");
     const index = tx.objectStore(CHUNKS).index("session_sequence");
-    const range = IDBKeyRange.bound([session, 0], [session, Number.MAX_SAFE_INTEGER]);
+    const range = IDBKeyRange.bound(
+      [session, 0],
+      [session, Number.MAX_SAFE_INTEGER],
+    );
     const cursor = index.openCursor(range, "next");
     let result: Chunk | undefined;
-    cursor.onsuccess = () => { result = cursor.result?.value as Chunk | undefined; };
-    tx.oncomplete = () => { db.close(); resolve(result); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
+    cursor.onsuccess = () => {
+      result = cursor.result?.value as Chunk | undefined;
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -70,12 +97,23 @@ async function lastSequence(session: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CHUNKS, "readonly");
     const index = tx.objectStore(CHUNKS).index("session_sequence");
-    const range = IDBKeyRange.bound([session, 0], [session, Number.MAX_SAFE_INTEGER]);
+    const range = IDBKeyRange.bound(
+      [session, 0],
+      [session, Number.MAX_SAFE_INTEGER],
+    );
     const cursor = index.openCursor(range, "prev");
     let result = -1;
-    cursor.onsuccess = () => { if (cursor.result) result = (cursor.result.value as Chunk).sequence; };
-    tx.oncomplete = () => { db.close(); resolve(result); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
+    cursor.onsuccess = () => {
+      if (cursor.result) result = (cursor.result.value as Chunk).sequence;
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -131,21 +169,35 @@ export class LiveStreamSession {
     this.callbacks = callbacks;
   }
 
-  get sessionId(): string | null { return this.session; }
+  get sessionId(): string | null {
+    return this.session;
+  }
 
   async start(resumeSession?: string): Promise<string> {
-    this.session = resumeSession || (await this.client.createSession({
-      mode: "dictation", tone: this.tone, language: this.language,
-    })).id;
+    this.session =
+      resumeSession ||
+      (
+        await this.client.createSession({
+          mode: "dictation",
+          tone: this.tone,
+          language: this.language,
+        })
+      ).id;
     localStorage.setItem(SESSION_ID_KEY, this.session);
     const pending = await oldestPending(this.session);
     this.next = (await lastSequence(this.session)) + 1;
     if (resumeSession) {
       const old = await this.client.getSession(resumeSession);
-      if (old.status === "completed") throw new Error("Session is already completed");
+      if (old.status === "completed")
+        throw new Error("Session is already completed");
       const state = await this.client.streamState(resumeSession);
-      if (state.pending_sequence !== null && pending?.sequence !== state.pending_sequence) {
-        throw new Error("The server has an uncommitted chunk missing from local storage");
+      if (
+        state.pending_sequence !== null &&
+        pending?.sequence !== state.pending_sequence
+      ) {
+        throw new Error(
+          "The server has an uncommitted chunk missing from local storage",
+        );
       }
       this.next = Math.max(this.next, state.next_sequence);
       void this.restoreHistory();
@@ -180,35 +232,53 @@ export class LiveStreamSession {
     if (this.disposed || !this.session) return;
     const sequence = this.next++;
     const session = this.session;
-    this.persistedWrite = this.persistedWrite.then(async () => {
-      await transact(CHUNKS, "readwrite", (store) => store.put({
-        id: session + ":" + sequence, session, sequence, pcm,
-      } satisfies Chunk));
-      await this.pump();
-    }).catch((error) => this.callbacks.error(String(error)));
+    this.persistedWrite = this.persistedWrite
+      .then(async () => {
+        await transact(CHUNKS, "readwrite", (store) =>
+          store.put({
+            id: session + ":" + sequence,
+            session,
+            sequence,
+            pcm,
+          } satisfies Chunk),
+        );
+        await this.pump();
+      })
+      .catch((error) => this.callbacks.error(String(error)));
   }
 
   private connect(): void {
     if (!this.session || this.disposed) return;
-    const uri = this.origin.replace(/^http/, "ws") + "/v1/stream/" + this.session;
+    const uri =
+      this.origin.replace(/^http/, "ws") + "/v1/stream/" + this.session;
     const ws = new WebSocket(uri);
     this.socket = ws;
     this.ready = false;
     this.awaiting = null;
     ws.onopen = () => {
       // Never include API token in URL, localStorage or logs.
-      ws.send(JSON.stringify({
-        type: "hello", token: this.token, language: this.language,
-        cleanup: this.cleanup, tone: this.tone, last_seen: -1,
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "hello",
+          token: this.token,
+          language: this.language,
+          cleanup: this.cleanup,
+          tone: this.tone,
+          last_seen: -1,
+        }),
+      );
     };
-    ws.onmessage = (event: MessageEvent) => { void this.receive(event.data); };
+    ws.onmessage = (event: MessageEvent) => {
+      void this.receive(event.data);
+    };
     ws.onclose = (event) => {
       this.ready = false;
       this.awaiting = null;
       if (this.disposed || event.code === 1000) return;
       if ([4400, 4401, 4403, 4404, 4409].includes(event.code)) {
-        this.callbacks.error("Stream denied by the server (code " + event.code + ")");
+        this.callbacks.error(
+          "Stream denied by the server (code " + event.code + ")",
+        );
         return;
       }
       this.callbacks.state("reconnecting");
@@ -220,17 +290,26 @@ export class LiveStreamSession {
   private async receive(raw: string): Promise<void> {
     if (this.disposed) return;
     let event: Record<string, unknown>;
-    try { event = JSON.parse(raw) as Record<string, unknown>; }
-    catch { this.callbacks.error("Malformed server response"); return; }
+    try {
+      event = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      this.callbacks.error("Malformed server response");
+      return;
+    }
     switch (event.type) {
       case "ready": {
         this.ready = true;
         this.retries = 0;
         const expected = event.next_sequence;
         if (typeof expected === "number") {
-          this.next = Math.max(this.next, expected, (await lastSequence(this.session!)) + 1);
+          this.next = Math.max(
+            this.next,
+            expected,
+            (await lastSequence(this.session!)) + 1,
+          );
         }
-        for (const result of (event.results as LiveResult[] | undefined) ?? []) {
+        for (const result of (event.results as LiveResult[] | undefined) ??
+          []) {
           await this.saveResult(result);
         }
         this.callbacks.state(this.stopped ? "draining" : "recording");
@@ -241,14 +320,15 @@ export class LiveStreamSession {
         // Raw audio is kept in IndexedDB until the final commit, not until ACK.
         break;
       case "partial":
-        if (typeof event.raw_text === "string") this.callbacks.partial(event.raw_text);
+        if (typeof event.raw_text === "string")
+          this.callbacks.partial(event.raw_text);
         break;
       case "final": {
         const result = event as unknown as LiveResult;
         await this.saveResult(result);
-        await transact(CHUNKS, "readwrite", (store) => store.delete(
-          this.session + ":" + result.sequence,
-        ));
+        await transact(CHUNKS, "readwrite", (store) =>
+          store.delete(this.session + ":" + result.sequence),
+        );
         this.awaiting = null;
         this.callbacks.partial("");
         await this.pump();
@@ -272,27 +352,43 @@ export class LiveStreamSession {
   private async saveResult(result: LiveResult): Promise<void> {
     const session = this.session;
     if (!session) return;
-    await transact(RESULTS, "readwrite", (store) => store.put({
-      ...result, id: session + ":" + result.sequence, session,
-    } satisfies StoredResult));
+    await transact(RESULTS, "readwrite", (store) =>
+      store.put({
+        ...result,
+        id: session + ":" + result.sequence,
+        session,
+      } satisfies StoredResult),
+    );
     this.callbacks.result(result);
   }
 
   private async pump(expected?: number): Promise<void> {
-    if (!this.session || !this.ready || this.awaiting !== null || this.finishingSent) return;
+    if (
+      !this.session ||
+      !this.ready ||
+      this.awaiting !== null ||
+      this.finishingSent
+    )
+      return;
     const ws = this.socket;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const first = await oldestPending(this.session);
     if (first) {
       if (typeof expected === "number" && first.sequence !== expected) {
-        this.callbacks.error("A required audio chunk is missing from the local queue");
+        this.callbacks.error(
+          "A required audio chunk is missing from the local queue",
+        );
         return;
       }
       this.awaiting = first.sequence;
-      ws.send(JSON.stringify({
-        type: "chunk", sequence: first.sequence,
-        encoding: "pcm_s16le", sample_rate: 16000,
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "chunk",
+          sequence: first.sequence,
+          encoding: "pcm_s16le",
+          sample_rate: 16000,
+        }),
+      );
       ws.send(first.pcm);
     } else if (this.stopped) {
       this.finishingSent = true;

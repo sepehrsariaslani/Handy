@@ -55,13 +55,23 @@ export class HandyAiClient {
     results: Array<{
       type: "final";
       sequence: number;
-      segment: { raw_text: string; clean_text: string | null; id: string; start: number; end: number; speaker: string | null; final: boolean };
+      segment: {
+        raw_text: string;
+        clean_text: string | null;
+        id: string;
+        start: number;
+        end: number;
+        speaker: string | null;
+        final: boolean;
+      };
       language: string | null;
       warnings: string[];
     }>;
   }> {
     if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid session ID");
-    return this.request("/v1/sessions/" + id + "/stream-state?after_sequence=" + afterSequence);
+    return this.request(
+      "/v1/sessions/" + id + "/stream-state?after_sequence=" + afterSequence,
+    );
   }
 
   cleanupText(body: AiCleanupRequest): Promise<AiCleanupResponse> {

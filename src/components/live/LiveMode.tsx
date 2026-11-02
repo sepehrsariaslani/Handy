@@ -10,7 +10,13 @@ import {
 } from "@/lib/ai/liveSession";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
 
-const TONES: AiTone[] = ["verbatim", "professional", "formal", "casual", "friendly"];
+const TONES: AiTone[] = [
+  "verbatim",
+  "professional",
+  "formal",
+  "casual",
+  "friendly",
+];
 
 export function LiveMode() {
   const { t } = useTranslation();
@@ -27,10 +33,13 @@ export function LiveMode() {
   const [busy, setBusy] = useState(false);
   const controller = useRef<LiveStreamSession | null>(null);
 
-  useEffect(() => () => {
-    const current = controller.current;
-    if (current) void current.stop().finally(() => current.dispose());
-  }, []);
+  useEffect(
+    () => () => {
+      const current = controller.current;
+      if (current) void current.stop().finally(() => current.dispose());
+    },
+    [],
+  );
 
   const active = ["recording", "reconnecting", "draining"].includes(phase);
   const transcript = Object.values(results)
@@ -117,28 +126,44 @@ export function LiveMode() {
       <section className="w-full rounded-xl border border-line p-4 flex flex-col gap-4">
         <label className="text-sm flex flex-col gap-1">
           {t("live.serverUrl")}
-          <input type="url" value={serverUrl} disabled={active || busy}
+          <input
+            type="url"
+            value={serverUrl}
+            disabled={active || busy}
             className="rounded-lg border border-line bg-transparent px-3 py-2"
-            onChange={(event) => setServerUrl(event.target.value)} />
+            onChange={(event) => setServerUrl(event.target.value)}
+          />
         </label>
         <label className="text-sm flex flex-col gap-1">
           {t("live.apiKey")}
-          <input type="password" value={apiKey} disabled={active || busy}
-            autoComplete="off" className="rounded-lg border border-line bg-transparent px-3 py-2"
-            onChange={(event) => setApiKey(event.target.value)} />
+          <input
+            type="password"
+            value={apiKey}
+            disabled={active || busy}
+            autoComplete="off"
+            className="rounded-lg border border-line bg-transparent px-3 py-2"
+            onChange={(event) => setApiKey(event.target.value)}
+          />
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm flex flex-col gap-1">
             {t("live.language")}
-            <input value={language} disabled={active || busy} maxLength={35}
+            <input
+              value={language}
+              disabled={active || busy}
+              maxLength={35}
               className="rounded-lg border border-line bg-transparent px-3 py-2"
-              onChange={(event) => setLanguage(event.target.value)} />
+              onChange={(event) => setLanguage(event.target.value)}
+            />
           </label>
           <label className="text-sm flex flex-col gap-1">
             {t("live.tone")}
-            <select value={tone} disabled={active || busy}
+            <select
+              value={tone}
+              disabled={active || busy}
               className="rounded-lg border border-line bg-background px-3 py-2"
-              onChange={(event) => setTone(event.target.value as AiTone)}>
+              onChange={(event) => setTone(event.target.value as AiTone)}
+            >
               {TONES.map((item) => (
                 <option key={item} value={item}>
                   {t("live.tones." + item)}
@@ -148,13 +173,21 @@ export function LiveMode() {
           </label>
         </div>
         <label className="text-sm flex gap-2 items-start">
-          <input type="checkbox" checked={cleanup} disabled={active || busy}
-            onChange={(event) => setCleanup(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={cleanup}
+            disabled={active || busy}
+            onChange={(event) => setCleanup(event.target.checked)}
+          />
           {t("live.cleanup")}
         </label>
         <label className="text-sm flex gap-2 items-start">
-          <input type="checkbox" checked={consent} disabled={active || busy}
-            onChange={(event) => setConsent(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={consent}
+            disabled={active || busy}
+            onChange={(event) => setConsent(event.target.checked)}
+          />
           {t("live.consent")}
         </label>
         {savedSession && !active && (
@@ -162,26 +195,38 @@ export function LiveMode() {
         )}
         <div className="flex flex-wrap items-center gap-2">
           {!active ? (
-            <button type="button" disabled={!consent || !apiKey.trim() || busy}
+            <button
+              type="button"
+              disabled={!consent || !apiKey.trim() || busy}
               className="bg-logo-primary text-white rounded-lg px-4 py-2 disabled:opacity-50 flex items-center gap-2"
-              onClick={() => void start()}>
-              <Mic size={16} /> {savedSession ? t("live.resume") : t("live.start")}
+              onClick={() => void start()}
+            >
+              <Mic size={16} />{" "}
+              {savedSession ? t("live.resume") : t("live.start")}
             </button>
           ) : (
-            <button type="button" disabled={busy || phase === "draining"}
+            <button
+              type="button"
+              disabled={busy || phase === "draining"}
               className="bg-red-600 text-white rounded-lg px-4 py-2 disabled:opacity-50 flex items-center gap-2"
-              onClick={() => void stop()}>
+              onClick={() => void stop()}
+            >
               <Square size={16} /> {t("live.stop")}
             </button>
           )}
           {!active && savedSession && (
-            <button type="button" disabled={busy} onClick={newSession}
-              className="rounded-lg border border-line px-3 py-2 text-sm">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={newSession}
+              className="rounded-lg border border-line px-3 py-2 text-sm"
+            >
               {t("live.newSession")}
             </button>
           )}
           <span className="text-sm text-ink-3">
-            {t("live.status")}: {t("live.states." + phase, { defaultValue: phase })}
+            {t("live.status")}:{" "}
+            {t("live.states." + phase, { defaultValue: phase })}
           </span>
         </div>
         <p className="text-xs text-ink-3">{t("live.offlineNotice")}</p>
@@ -189,15 +234,21 @@ export function LiveMode() {
       <section className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">{t("live.transcript")}</h2>
-          <button type="button" disabled={!transcript} onClick={() => void copy()}
-            className="border border-line px-3 py-2 rounded-lg disabled:opacity-50 text-sm flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!transcript}
+            onClick={() => void copy()}
+            className="border border-line px-3 py-2 rounded-lg disabled:opacity-50 text-sm flex items-center gap-2"
+          >
             <Copy size={15} /> {t("live.copy")}
           </button>
         </div>
         <div className="max-h-96 overflow-y-auto whitespace-pre-wrap select-text text-sm">
           {transcript}
           {partial && <span className="text-ink-3 italic"> {partial}</span>}
-          {!transcript && !partial && <p className="text-ink-3">{t("live.empty")}</p>}
+          {!transcript && !partial && (
+            <p className="text-ink-3">{t("live.empty")}</p>
+          )}
         </div>
         <p className="text-xs text-ink-3">{t("live.review")}</p>
       </section>

@@ -57,9 +57,7 @@ export class LiveAudioCapture {
       }
     }
     const rms = produced ? Math.sqrt(energy / produced) : 0;
-    this.silenceSamples = rms < 0.007
-      ? this.silenceSamples + produced
-      : 0;
+    this.silenceSamples = rms < 0.007 ? this.silenceSamples + produced : 0;
     if (
       this.total.length >= this.maxSamples ||
       (this.total.length >= 16000 * 1.2 && this.silenceSamples >= 16000 * 0.65)
@@ -105,9 +103,13 @@ export class LiveAudioCapture {
           new Blob([workletCode], { type: "text/javascript" }),
         );
         await this.context.audioWorklet.addModule(this.workletUrl);
-        const processor = new AudioWorkletNode(this.context, "handy-live-capture");
+        const processor = new AudioWorkletNode(
+          this.context,
+          "handy-live-capture",
+        );
         processor.port.onmessage = (event: MessageEvent<Float32Array>) => {
-          if (event.data instanceof Float32Array) this.receiveSamples(event.data);
+          if (event.data instanceof Float32Array)
+            this.receiveSamples(event.data);
         };
         this.processor = processor;
       } else {
