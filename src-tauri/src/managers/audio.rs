@@ -1020,7 +1020,9 @@ impl AudioRecordingManager {
             .try_state::<crate::commands::meeting::MeetingState>()
             .is_some_and(|meeting| meeting.is_active())
         {
-            return Err(anyhow::anyhow!("Stop Meeting Mode before starting dictation"));
+            return Err(anyhow::anyhow!(
+                "Stop Meeting Mode before starting dictation"
+            ));
         }
         let mut state = self.state.lock().unwrap();
         if !matches!(*state, RecordingState::Idle) {

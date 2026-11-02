@@ -22,7 +22,6 @@ pub struct MeetingInfo {
     pub remote_server_url: Option<String>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct MeetingUtterance {
     pub id: String,
@@ -71,7 +70,10 @@ pub struct MeetingState {
 
 impl MeetingState {
     pub fn is_active(&self) -> bool {
-        self.active.lock().map(|meeting| meeting.is_some()).unwrap_or(false)
+        self.active
+            .lock()
+            .map(|meeting| meeting.is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -164,7 +166,11 @@ pub fn start_meeting(
     if app.state::<Arc<AudioRecordingManager>>().is_recording() {
         return Err("Stop the current dictation before starting a meeting".to_owned());
     }
-    let id = format!("{}-{}", Utc::now().format("%Y%m%dT%H%M%S%3f"), std::process::id());
+    let id = format!(
+        "{}-{}",
+        Utc::now().format("%Y%m%dT%H%M%S%3f"),
+        std::process::id()
+    );
     let directory = meeting_dir(&app)?.join(&id);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let audio_path = directory.join("audio.wav");
@@ -203,7 +209,9 @@ pub fn start_meeting(
     let recorder = Recorder::open_with_failure_handler(
         RecorderConfig {
             device,
-            channels: settings.selected_channel.map_or(Channels::MixToMono, Channels::Only),
+            channels: settings
+                .selected_channel
+                .map_or(Channels::MixToMono, Channels::Only),
             frames_per_chunk: Some(1024),
             ..RecorderConfig::speech()
         },
@@ -264,7 +272,6 @@ pub fn stop_meeting(state: State<'_, MeetingState>) -> Result<MeetingInfo, Strin
     Ok(active.info)
 }
 
-
 #[tauri::command]
 #[specta::specta]
 pub fn recover_meeting(
@@ -275,8 +282,12 @@ pub fn recover_meeting(
     if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || id.len() > 80 {
         return Err("Invalid meeting ID".into());
     }
-    if state.active.lock().map_err(|e| e.to_string())?
-        .as_ref().is_some_and(|meeting| meeting.info.id == id)
+    if state
+        .active
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .is_some_and(|meeting| meeting.info.id == id)
     {
         return Err("Cannot recover an active recording".into());
     }
@@ -299,7 +310,10 @@ pub fn recover_meeting(
 
 #[tauri::command]
 #[specta::specta]
-pub fn list_meetings(app: AppHandle, state: State<'_, MeetingState>) -> Result<Vec<MeetingInfo>, String> {
+pub fn list_meetings(
+    app: AppHandle,
+    state: State<'_, MeetingState>,
+) -> Result<Vec<MeetingInfo>, String> {
     let root = meeting_dir(&app)?;
     if !root.exists() {
         return Ok(Vec::new());
@@ -311,8 +325,12 @@ pub fn list_meetings(app: AppHandle, state: State<'_, MeetingState>) -> Result<V
             info.bytes = fs::metadata(&info.audio_path).map(|m| m.len()).unwrap_or(0);
             // A crashed process may have left a "recording" entry on disk.
             if info.status == "recording" {
-                let recording_this = state.active.lock().map_err(|e| e.to_string())?
-                    .as_ref().is_some_and(|m| m.info.id == info.id);
+                let recording_this = state
+                    .active
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .as_ref()
+                    .is_some_and(|m| m.info.id == info.id);
                 if !recording_this {
                     info.status = "interrupted".into();
                 }
@@ -370,7 +388,10 @@ pub async fn submit_meeting(
     if let Some(key) = api_key.filter(|s| !s.is_empty()) {
         request = request.bearer_auth(key);
     }
-    let response = request.send().await.map_err(|e| format!("Upload failed: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Upload failed: {e}"))?;
     let status = response.status();
     let body = response.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
@@ -408,7 +429,6 @@ pub async fn get_meeting_job(
         .await
         .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 #[specta::specta]
