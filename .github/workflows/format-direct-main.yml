@@ -14,14 +14,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Format React and TypeScript
-        run: bunx prettier --write src/components/notes/NotesMode.tsx src/components/meeting/MeetingMode.tsx src/lib/ai/client.ts
+        run: bunx prettier --write src/components/notes/NotesMode.tsx src/components/meeting/MeetingMode.tsx src/lib/ai/client.ts docs/ai-phase6-notes.md
       - name: Rustfmt
         run: cargo fmt --manifest-path src-tauri/Cargo.toml
       - name: Commit formatting directly to main
         run: |
           git config user.name 'handy-format-ci'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add src/components/notes/NotesMode.tsx src/components/meeting/MeetingMode.tsx src/lib/ai/client.ts src-tauri/src
+          git add src/components/notes/NotesMode.tsx src/components/meeting/MeetingMode.tsx src/lib/ai/client.ts docs/ai-phase6-notes.md src-tauri/src
           if ! git diff --cached --quiet; then
             git commit -m 'style: format post-stop transcription and logging changes'
             git push origin HEAD:main
