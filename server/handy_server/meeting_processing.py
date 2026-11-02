@@ -1,5 +1,6 @@
 """Bounded-memory meeting transcription pipeline, safe restart, and background worker."""
 import asyncio
+import logging
 from pathlib import Path
 import tempfile
 import wave
@@ -9,6 +10,7 @@ from .meeting_store import MeetingStore
 from .meeting_analysis import QwenMeetingAnalyzer
 from .workers import WorkerUnavailable, WorkerFailure
 
+LOG = logging.getLogger(__name__)
 RATE = 16000
 WINDOW_SECONDS = 30
 
@@ -113,7 +115,14 @@ class MeetingProcessor:
             await asyncio.to_thread(self.store.stage, job_id, "diarizing")
             # The pyannote pipeline is intentionally not run on 20-hour files:
             # it loads full audio and could exhaust GPU or system memory.
-            turns = await asyncio.to_thread(self.diarizer.turns, audio_path, duration)
+            try:
+                turns = await asyncio.to_thread(self.diarizer.turns, audio_path, duration)
+            except Exception as exc:
+                # ASR and meeting insights must survive a diarizer outage.
+                # Do not misattribute an unrecognized speaker.
+                LOG.warning("Diarization unavailable (%s); speaker labels remain Unknown",
+                            type(exc).__name__)
+                turns = []
             if turns:
                 offset = 0
                 while True:
