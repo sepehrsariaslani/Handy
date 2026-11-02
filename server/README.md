@@ -185,3 +185,8 @@ The server supports durable meeting jobs, 30-second windowed transcription,
 optional pyannote speaker diarization, grounded Qwen summaries and resumable
 4 MiB chunk uploads. Full operational instructions, permissions, security
 limits and API routes: [Phase 5 Meeting Mode](../docs/ai-phase5-meeting.md).
+
+## Phase 6: Notes and knowledge
+
+CPU-only searchable notes, optional Qwen analysis and meeting imports.
+See [Phase 6](../docs/ai-phase6-notes.md) for the API and deployment.
