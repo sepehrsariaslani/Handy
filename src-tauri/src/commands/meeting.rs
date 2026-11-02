@@ -1,5 +1,6 @@
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::ModelManager;
+use sha2::{Digest, Sha256};
 use chrono::Utc;
 use handy_recorder::{AudioChunk, Channels, EndReason, Recorder, RecorderConfig, Sink};
 use serde::{Deserialize, Serialize};
@@ -214,14 +215,13 @@ fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
     if selected.is_empty() {
         return Err("Select and download a transcription model before recording".into());
     }
-    if selected.len() > 120
-        || !selected
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-        || selected.contains("..")
-    {
-        return Err("Selected model ID is not valid for Meeting/Notes".into());
+    // Catalog model IDs contain repository slashes (repo/name/file.gguf).
+    // Keep the original ID for the UI and API, but NEVER use it as a path.
+    // Instead use a stable, collision-resistant filename keyed by the ID.
+    if selected.len() > 512 {
+        return Err("Selected transcription model ID is too long".into());
     }
+    let safe_file = format!("asr-{:x}.gguf", Sha256::digest(selected.as_bytes()));
     let manager = app.state::<Arc<ModelManager>>();
     let path = manager
         .get_model_path(&selected)
@@ -238,7 +238,7 @@ fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
         let directory = PathBuf::from(directory);
         fs::create_dir_all(&directory)
             .map_err(|e| format!("Cannot prepare local ASR registry: {e}"))?;
-        let link = directory.join(format!("{selected}.gguf"));
+        let link = directory.join(&safe_file);
         match fs::read_link(&link) {
             Ok(existing) if existing == path => {}
             Ok(_) => {
@@ -250,7 +250,7 @@ fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
             }
             Err(error) => return Err(format!("Cannot register model: {error}")),
         }
-        log::info!("Meeting/Notes ASR model selected: {}", selected);
+        log::info!("Meeting/Notes ASR model selected: {} (registered as {})", selected, safe_file);
         Ok(Some(selected))
     }
     #[cfg(not(unix))]
