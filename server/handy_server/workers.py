@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -132,20 +133,47 @@ class GgufWhisperWorker:
             logger.warning("GGUF Whisper initialization failed (%s)", self._load_error)
             self._ready = False
 
+    def selected_path(self, model_id: str | None) -> Path:
+        """Resolve only a registered GGUF, never a caller-supplied filesystem path."""
+        if not model_id:
+            if self.settings.gguf_model_path is None:
+                raise WorkerUnavailable("Default GGUF model is not configured")
+            return self.settings.gguf_model_path
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", model_id) or ".." in model_id:
+            raise WorkerUnavailable("Invalid selected ASR model ID")
+        directory = self.settings.gguf_model_dir
+        if directory is None:
+            raise WorkerUnavailable("This server does not support local model switching")
+        target = directory / f"{model_id}.gguf"
+        if not target.is_file():
+            raise WorkerUnavailable(
+                f"Selected model '{model_id}' is not registered on the local server"
+            )
+        return target
+
     def _run_cli(self, audio_path: Path, language: str | None,
-                 timeout: int = 300) -> tuple[list[TranscriptSegment], str | None]:
+                 timeout: int = 300, model_id: str | None = None
+                 ) -> tuple[list[TranscriptSegment], str | None]:
+        selected = self.selected_path(model_id)
+        is_qwen_asr = "qwen3-asr" in selected.name.lower()
         with tempfile.TemporaryDirectory(prefix="handy-gguf-batch-") as temp:
             inputs = Path(temp) / "audio.list"
             inputs.write_text(str(audio_path.resolve()) + "\n", encoding="utf-8")
             command = [
                 str(self.settings.transcribe_cli_path), "-q",
-                "-m", str(self.settings.gguf_model_path),
+                "-m", str(selected),
                 "--backend", self.settings.gguf_compute_backend,
-                "--timestamps", "segment",
+                "--timestamps", "none" if is_qwen_asr else "segment",
                 "--batch", str(inputs), "--batch-jsonl",
             ]
-            if language:
+            # Qwen3-ASR detects language natively and has no forced-language
+            # or timestamp capability. Whisper retains explicit language.
+            if language and not is_qwen_asr:
                 command.extend(["--language", language])
+            logger.info("asr.cli.start model=%s family=%s requested_language=%s",
+                        model_id or selected.name, "qwen3-asr" if is_qwen_asr else "gguf",
+                        language or "auto")
+            started = monotonic()
             try:
                 proc = subprocess.run(
                     command, capture_output=True, text=True, check=False,
@@ -155,8 +183,12 @@ class GgufWhisperWorker:
                 logger.warning("GGUF CLI execution failed (%s)", type(exc).__name__)
                 raise WorkerFailure("GGUF Whisper execution failed") from None
             if proc.returncode != 0:
-                logger.warning("GGUF CLI exited with status %s", proc.returncode)
-                raise WorkerFailure("GGUF Whisper inference failed")
+                logger.warning("GGUF CLI exited with status %s model=%s elapsed_ms=%d",
+                               proc.returncode, model_id or selected.name,
+                               int((monotonic() - started) * 1000))
+                raise WorkerFailure("Selected GGUF ASR model inference failed")
+            logger.info("asr.cli.completed model=%s elapsed_ms=%d",
+                        model_id or selected.name, int((monotonic() - started) * 1000))
             try:
                 records = [json.loads(line) for line in proc.stdout.splitlines()
                            if line.strip()]
@@ -198,13 +230,16 @@ class GgufWhisperWorker:
                 logger.warning("GGUF CLI returned an invalid result")
                 raise WorkerFailure("Invalid GGUF Whisper result") from None
 
-    def transcribe_file(self, path: Path, language: str | None = None) -> tuple[list[TranscriptSegment], str | None]:
+    def transcribe_file(self, path: Path, language: str | None = None,
+                        model_id: str | None = None) -> tuple[list[TranscriptSegment], str | None]:
         if not self._ready:
-            raise WorkerUnavailable("GGUF Whisper is not ready")
+            raise WorkerUnavailable("GGUF ASR is not ready")
+        # Validate selection before starting an expensive subprocess.
+        self.selected_path(model_id)
         # Each CLI call loads the memory-mapped model, so long meetings will
         # be slower than a persistent in-process backend on a small Mac.
         with self._lock:
-            return self._run_cli(path, language)
+            return self._run_cli(path, language, model_id=model_id)
 
 
 class QwenWorker:
@@ -386,10 +421,20 @@ class InferenceRuntime:
     async def llm_ready(self) -> bool:
         return await self.llm.ready()
 
-    async def transcribe(self, path: Path, language: str | None = None) -> tuple[list[TranscriptSegment], str | None]:
+    def validate_asr_model(self, model_id: str | None) -> None:
+        if model_id:
+            if not isinstance(self.asr, GgufWhisperWorker):
+                raise WorkerUnavailable("Selected GGUF models need the local transcribe.cpp backend")
+            self.asr.selected_path(model_id)
+
+    async def transcribe(self, path: Path, language: str | None = None,
+                         model_id: str | None = None) -> tuple[list[TranscriptSegment], str | None]:
         if not self.asr.ready:
-            raise WorkerUnavailable("Whisper large-v3 is not ready")
+            raise WorkerUnavailable("Selected ASR model is not ready")
+        self.validate_asr_model(model_id)
         async with self._asr_queue:
+            if isinstance(self.asr, GgufWhisperWorker):
+                return await asyncio.to_thread(self.asr.transcribe_file, path, language, model_id)
             return await asyncio.to_thread(self.asr.transcribe_file, path, language)
 
     async def cleanup(self, body: CleanupRequest) -> CleanupResponse:
