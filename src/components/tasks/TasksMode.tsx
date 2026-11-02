@@ -152,39 +152,39 @@ export function TasksMode() {
         <p className="text-sm text-ink-3 mt-1">{t("tasks.intro")}</p>
       </header>
       {!LOCAL_AI_TEST_MODE && (
-      <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          {t("tasks.serverUrl")}
-          <input
-            type="url"
-            value={serverUrl}
-            className="border border-line bg-transparent rounded-lg px-3 py-2"
-            onChange={(event) => {
-              setServerUrl(event.target.value);
-              setApiKey("");
-            }}
-            onBlur={() => {
-              try {
-                setServerUrl(saveServerUrl(serverUrl));
-              } catch (error) {
-                toast.error(toError(error));
-              }
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          {t("tasks.apiKey")}
-          <input
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            placeholder={localApiKey ? "Local API key detected" : undefined}
-            className="border border-line bg-transparent rounded-lg px-3 py-2"
-            onChange={(event) => setApiKey(event.target.value)}
-          />
-        </label>
-        <p className="text-xs text-ink-3">{t("tasks.privacy")}</p>
-      </section>
+        <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            {t("tasks.serverUrl")}
+            <input
+              type="url"
+              value={serverUrl}
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              onChange={(event) => {
+                setServerUrl(event.target.value);
+                setApiKey("");
+              }}
+              onBlur={() => {
+                try {
+                  setServerUrl(saveServerUrl(serverUrl));
+                } catch (error) {
+                  toast.error(toError(error));
+                }
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            {t("tasks.apiKey")}
+            <input
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              placeholder={localApiKey ? "Local API key detected" : undefined}
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </label>
+          <p className="text-xs text-ink-3">{t("tasks.privacy")}</p>
+        </section>
       )}
 
       <section className="rounded-xl border border-line p-3 flex gap-2 flex-wrap items-end">
