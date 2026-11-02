@@ -47,9 +47,9 @@ class _SpeakerRegistry:
         self.next_id = 0
 
     def match(self, labels, vectors):
-        import numpy as np
         candidates = []
         if vectors is not None:
+            import numpy as np
             for label, vector in vectors.items():
                 v = _normalized(vector)
                 if v is None:
