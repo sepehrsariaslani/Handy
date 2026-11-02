@@ -157,4 +157,6 @@ export interface AiMemoryResponse {
   citations: string[];
   sources: AiMemorySource[];
   warning: string | null;
+  applied_since: string | null;
+  applied_until: string | null;
 }
