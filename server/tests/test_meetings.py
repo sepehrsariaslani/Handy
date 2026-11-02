@@ -341,3 +341,90 @@ def test_ollama_non_501_failure_never_retries_without_validation(tmp_path):
             max_tokens=100, operation="meeting_analysis",
         ))
     assert len(calls) == 1
+
+
+def test_long_native_utterance_entire_ending_reaches_qwen_analysis(tmp_path):
+    """A 120s native ASR result can exceed 900 chars; never truncate tasks."""
+    import asyncio
+    from handy_server.meeting_analysis import QwenMeetingAnalyzer, meeting_text_parts
+
+    transcript = ("بحث درباره برنامه هفتگی شرکت و وظایف انجام شده. " * 40
+                  + "در انتها قرار شد گزارش آخر هفته تحویل داده شود.")
+    parts = meeting_text_parts(transcript)
+    assert len(parts) > 1
+    assert all(len(part) <= 850 for part in parts)
+    assert " ".join(" ".join(parts).split()) == " ".join(transcript.split())
+    assert "گزارش آخر هفته تحویل داده شود" in parts[-1]
+
+    class RecordingQwen:
+        def __init__(self):
+            self.payloads = []
+        async def structured(self, messages, *, max_tokens, operation):
+            self.payloads.append(messages[1]["content"])
+            return {"summary": "خلاصه جلسه", "decisions": [],
+                    "tasks": [], "open_questions": []}
+
+    llm = RecordingQwen()
+    analyzer = QwenMeetingAnalyzer(
+        Settings(api_key=KEY, db_path=tmp_path / "analysis.db"), llm,
+    )
+    result = asyncio.run(analyzer.analyze([{
+        "id": "u00000001", "speaker": "Unknown", "start": 0.0,
+        "end": 120.0, "text": transcript,
+    }]))
+    assert result.summary
+    assert any("گزارش آخر هفته تحویل داده شود" in payload
+               for payload in llm.payloads)
+    assert all('"u00000001"' in payload for payload in llm.payloads)
+
+
+def test_cleaned_transcript_pagination_exposes_full_last_block(engine):
+    """The response preview is only the first page, not the end of the text."""
+    client, asr, settings = engine
+    original = "متن ادامه جلسه " * 450 + "پایان مهم جلسه"
+    def transcribe(file, language):
+        with wave.open(str(file), "rb") as reader:
+            seconds = reader.getnframes() / reader.getframerate()
+        return [TranscriptSegment(id="s1", start=0, end=seconds,
+                                  raw_text=original, final=True)], "fa"
+    asr.transcribe_file = transcribe
+    response = client.post(
+        "/v1/meetings", headers=HEADERS,
+        files={"audio": ("long.wav", wav_data(2), "audio/wav")},
+        data={"meeting_id": "long-cleaned-tail"},
+    )
+    assert response.status_code == 202
+    completed = wait_for(client, response.json()["id"], "completed")
+    assert completed["cleaned_block_count"] >= 2
+    assert "پایان مهم جلسه" not in completed["clean_text"]
+    blocks = client.get(
+        "/v1/meetings/" + completed["id"] + "/cleaned?offset=0&limit=10",
+        headers=HEADERS,
+    ).json()
+    assert blocks["total"] == completed["cleaned_block_count"]
+    assert "پایان مهم جلسه" in "\n\n".join(blocks["items"])
+    assert "پایان مهم جلسه" in completed["transcript"][-1]["text"]
+
+
+def test_meeting_exact_last_second_is_transcribed(tmp_path):
+    """A non-multiple-of-120-second WAV must submit its final audio window."""
+    from handy_server.meeting_processing import wav_window, RATE, WINDOW_SECONDS
+    source = tmp_path / "last-second.wav"
+    frames = RATE * (WINDOW_SECONDS + 1) + RATE // 4
+    with wave.open(str(source), "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(RATE)
+        writer.writeframes(b"\\x00\\x00" * (frames - 10) + b"\\xff\\x7f" * 10)
+    first, count1 = wav_window(source, 0, RATE * WINDOW_SECONDS)
+    final, count2 = wav_window(source, count1, frames - count1)
+    try:
+        assert count1 + count2 == frames
+        assert count2 == RATE + RATE // 4
+        with wave.open(str(final), "rb") as last:
+            assert last.getnframes() == count2
+            last.setpos(count2 - 10)
+            assert last.readframes(10) == b"\\xff\\x7f" * 10
+    finally:
+        first.unlink(missing_ok=True)
+        final.unlink(missing_ok=True)
