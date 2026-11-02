@@ -2,6 +2,14 @@
 const STORAGE_KEY = "handy.ai.serverUrl.v1";
 export const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
 
+/**
+ * Local-first development only. A future production server can be enabled
+ * without touching Meeting/Notes/Memory/Tasks: set VITE_HANDY_AI_REMOTE=1
+ * at build time and use the existing remote server URL/key controls.
+ */
+export const LOCAL_AI_TEST_MODE =
+  import.meta.env.DEV && import.meta.env.VITE_HANDY_AI_REMOTE !== "1";
+
 export function normalizeServerUrl(value: string): string {
   const url = new URL(value.trim());
   const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -34,6 +42,9 @@ export function isLocalAiServer(value: string): boolean {
 }
 
 export function loadServerUrl(): string {
+  // Stale preferences from previous development sessions must not make a
+  // local test app send its requests to an unrelated remote endpoint.
+  if (LOCAL_AI_TEST_MODE) return DEFAULT_SERVER_URL;
   try {
     if (typeof window === "undefined") return DEFAULT_SERVER_URL;
     return normalizeServerUrl(
