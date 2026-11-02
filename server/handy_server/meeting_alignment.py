@@ -78,7 +78,11 @@ class WordAligner:
             return None
         # Native long-form blocks (often 600s) are intentionally NOT assigned
         # fabricated word timings. They need timestamp-capable ASR in the future.
-        code = (language or "fa").split("-")[0].lower()
+        code = (language or "auto").split("-")[0].lower()
+        if code == "auto":
+            text = segment["text"]
+            persian = sum("\\u0600" <= ch <= "\\u06ff" for ch in text)
+            code = "fa" if persian >= max(2, len(text) // 6) else "en"
         if code not in {"fa", "en"}:
             return None
         with self.lock:
