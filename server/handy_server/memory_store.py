@@ -3,7 +3,7 @@
 Search uses SQLite FTS5, with stable source IDs and optional UTC date filters.
 No embeddings, GPU, or external API are needed to retrieve references.
 """
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import re
 import sqlite3
@@ -14,8 +14,10 @@ STOPWORDS = {
     "من", "ما", "تو", "چه", "چی", "چیه", "بود", "بوده", "شد", "شده",
     "کرد", "کرده", "کنه", "کنم", "کنیم", "است", "هست", "هستم",
     "رو", "و", "یا", "یک", "هم", "چطور", "کدام", "آیا", "درباره",
+    "هفته", "گذشته", "قبل", "دیروز", "امروز", "این",
     "the", "a", "an", "in", "on", "of", "to", "did", "was",
     "is", "are", "what", "who", "when", "how", "my", "our",
+    "last", "week", "yesterday", "today", "this",
 }
 
 
@@ -34,6 +36,31 @@ def tokens(question: str) -> list[str]:
 
 def fts_query(words: list[str]) -> str:
     return " OR ".join('"' + word.replace('"', '') + '"' for word in words)
+
+
+def infer_utc_dates(
+    question: str, since: date | None, until: date | None,
+    today: date | None = None,
+) -> tuple[date | None, date | None]:
+    """Recognize explicit common relative time phrases; never silently shift
+    user-supplied dates. Weeks run Monday-Sunday in UTC.
+    """
+    if since is not None or until is not None:
+        return since, until
+    today = today or datetime.now(timezone.utc).date()
+    lowered = question.casefold()
+    if any(term in lowered for term in ("هفته گذشته", "هفته قبل", "last week")):
+        monday = today - timedelta(days=today.weekday())
+        return monday - timedelta(days=7), monday - timedelta(days=1)
+    if "دیروز" in lowered or "yesterday" in lowered:
+        yesterday = today - timedelta(days=1)
+        return yesterday, yesterday
+    if "امروز" in lowered or "today" in lowered:
+        return today, today
+    if "این هفته" in lowered or "this week" in lowered:
+        monday = today - timedelta(days=today.weekday())
+        return monday, today
+    return None, None
 
 
 class MemoryStore:
