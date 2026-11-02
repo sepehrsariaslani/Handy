@@ -17,10 +17,11 @@ LOG = logging.getLogger(__name__)
 RATE = 16000
 WINDOW_SECONDS = 120  # Existing remote and legacy worker batch bound.
 NATIVE_WINDOW_SECONDS = 600  # The desktop engine handles long-form chunking.
+ALIGNED_WINDOW_SECONDS = 40  # Bounded utterances for optional real word timestamps.
 NATIVE_OVERLAP_SECONDS = 5  # Preserve words spoken across window boundaries.
 
 
-def asr_window_plan(position: int, total_frames: int, native: bool) -> tuple[int, int]:
+def asr_window_plan(position: int, total_frames: int, native: bool, aligned: bool = False) -> tuple[int, int]:
     """Return (start_frame, end_frame) with exact coverage of the last sample.
 
     Native recordings up to ten minutes are sent in ONE full-file pass.
@@ -32,7 +33,8 @@ def asr_window_plan(position: int, total_frames: int, native: bool) -> tuple[int
     if not native:
         return position, min(total_frames, position + WINDOW_SECONDS * RATE)
     start = max(0, position - NATIVE_OVERLAP_SECONDS * RATE) if position else 0
-    return start, min(total_frames, start + NATIVE_WINDOW_SECONDS * RATE)
+    window = ALIGNED_WINDOW_SECONDS if aligned else NATIVE_WINDOW_SECONDS
+    return start, min(total_frames, start + window * RATE)
 
 
 def normalized_words(text: str) -> list[str]:
@@ -169,8 +171,14 @@ class MeetingProcessor:
             self.store.segments, job_id, max(0, counter - 1), 1
         ) if counter else []
         previous_text = previous[-1]["text"] if previous else ""
+        # Accurate speaker boundaries require short enough segments for the
+        # optional CTC word aligner. Keep native 10-minute fidelity when off.
+        aligned_native = (
+            native and self.diarizer.ready
+            and self.aligner is not None and self.aligner.ready
+        )
         while position < limit_frames:
-            start_frame, end_frame = asr_window_plan(position, limit_frames, native)
+            start_frame, end_frame = asr_window_plan(position, limit_frames, native, aligned_native)
             # For an entire native recording, avoid re-encoding or slicing:
             # the original WAV is precisely what Transcribe receives.
             whole_file = native and start_frame == 0 and end_frame == limit_frames
