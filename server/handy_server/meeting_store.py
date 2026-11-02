@@ -21,13 +21,19 @@ class MeetingStore:
                 status TEXT NOT NULL, stage TEXT NOT NULL, error TEXT,
                 duration REAL NOT NULL, next_sample INTEGER NOT NULL DEFAULT 0,
                 language TEXT, insights TEXT, title TEXT, meeting_date TEXT,
+                kind TEXT NOT NULL DEFAULT 'meeting', generated_note_id TEXT,
                  created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""")
             columns = {row[1] for row in db.execute("PRAGMA table_info(meeting_jobs)")}
-            for column in ("title", "meeting_date"):
+            for column in ("title", "meeting_date", "kind", "generated_note_id"):
                 if column not in columns:
-                    db.execute(f"ALTER TABLE meeting_jobs ADD COLUMN {column} TEXT")
+                    default = " NOT NULL DEFAULT 'meeting'" if column == "kind" else ""
+                    db.execute(f"ALTER TABLE meeting_jobs ADD COLUMN {column} TEXT" + default)
+            db.execute("""CREATE TABLE IF NOT EXISTS meeting_cleaned_blocks (
+                job_id TEXT NOT NULL, block_index INTEGER NOT NULL,
+                text TEXT NOT NULL, PRIMARY KEY(job_id, block_index)
+            )""")
             db.execute("""CREATE TABLE IF NOT EXISTS meeting_segments (
                 job_id TEXT NOT NULL, id TEXT NOT NULL,
                 speaker TEXT NOT NULL, start REAL NOT NULL,
@@ -46,7 +52,8 @@ class MeetingStore:
         return db
 
     def create(self, path: Path, duration: float, client_ref: str | None, language: str | None,
-               title: str | None = None, meeting_date: str | None = None) -> dict:
+               title: str | None = None, meeting_date: str | None = None,
+               kind: str = "meeting") -> dict:
         job_id = uuid4().hex
         with self.connect() as db:
             if client_ref:
@@ -55,10 +62,10 @@ class MeetingStore:
                     return dict(prior)
             db.execute("""INSERT INTO meeting_jobs
                 (id, client_ref, audio_path, status, stage, duration, next_sample, language,
-                 title, meeting_date, created_at, updated_at)
-                 VALUES(?,?,?,'queued','queued',?,0,?,?,?,?,?)""",
+                 title, meeting_date, kind, created_at, updated_at)
+                 VALUES(?,?,?,'queued','queued',?,0,?,?,?,?,?,?)""",
                 (job_id, client_ref, str(path), duration, language,
-                 title, meeting_date, now(), now()))
+                 title, meeting_date, kind, now(), now()))
         return self.get(job_id)
 
     def by_client_ref(self, value: str) -> dict | None:
@@ -114,29 +121,61 @@ class MeetingStore:
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM meeting_segments WHERE job_id=?", (job_id,)).fetchone()[0]
 
-    def complete(self, job_id: str, insights: MeetingAnalysis | None):
-        # The meeting and its action tasks commit atomically, even on worker crash.
+    def cleaned(self, job_id: str, offset: int = 0, limit: int = 10) -> dict:
+        with self.connect() as db:
+            records = db.execute("""SELECT text FROM meeting_cleaned_blocks
+                WHERE job_id=? ORDER BY block_index LIMIT ? OFFSET ?""",
+                (job_id, limit, offset)).fetchall()
+            total = db.execute("SELECT COUNT(*) FROM meeting_cleaned_blocks WHERE job_id=?",
+                               (job_id,)).fetchone()[0]
+        return {"items": [row["text"] for row in records], "offset": offset, "total": total}
+
+    def complete(self, job_id: str, insights: MeetingAnalysis | None,
+                 cleaned_blocks: list[str] | None = None):
+        # One transaction commits the completed job, its cleaned transcript,
+        # automatic notes, and any evidence-backed meeting tasks together.
         from .task_store import TaskStore
+        from .notes_store import NoteStore
         tasks = TaskStore(self.db_path)
+        notes = NoteStore(self.db_path)
         payload = json.dumps(insights.model_dump(), ensure_ascii=False) if insights else None
         with self.connect() as db:
-            row = db.execute("SELECT title,meeting_date,created_at FROM meeting_jobs WHERE id=?",
-                             (job_id,)).fetchone()
+            row = db.execute("SELECT * FROM meeting_jobs WHERE id=?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError("Meeting not found")
-            suggested = (insights.title or "").strip() if insights else ""
+            cleaned_blocks = cleaned_blocks or []
+            suggestion = (insights.title or "").strip() if insights else ""
             summary = (insights.summary or "").strip() if insights else ""
-            title = row["title"] or suggested[:180] or summary.split("\n")[0][:120] or "Meeting"
+            first_text = next((part.strip() for part in cleaned_blocks if part.strip()), "")
+            title = row["title"] or suggestion[:180] or (
+                first_text.split("\n")[0][:90] if row["kind"] == "note" else ""
+            ) or summary.split("\n")[0][:120] or "Meeting"
             proposed_date = (insights.meeting_date or "").strip() if insights else ""
             try:
                 inferred_date = date.fromisoformat(proposed_date).isoformat()
             except ValueError:
                 inferred_date = row["created_at"][:10]
-            meeting_date = row["meeting_date"] or inferred_date
+            date_value = row["meeting_date"] or inferred_date
+            for idx, part in enumerate(cleaned_blocks):
+                db.execute("""INSERT OR REPLACE INTO meeting_cleaned_blocks
+                    (job_id,block_index,text) VALUES(?,?,?)""", (job_id, idx, part))
+            note_id = row["generated_note_id"]
+            if row["kind"] == "note" and first_text and not note_id:
+                # Preserve the entire transcription in several editable notes
+                # rather than silently truncating recordings longer than 12k.
+                full_text = "\n\n".join(part for part in cleaned_blocks if part.strip())
+                pieces = [full_text[idx:idx+11000] for idx in range(0,len(full_text),11000)]
+                for idx, part in enumerate(pieces):
+                    suffix = f" ({idx+1}/{len(pieces)})" if len(pieces) > 1 else ""
+                    new_note = notes.create(title[:180-len(suffix)] + suffix,
+                                            part, meeting_id=job_id, connection=db)
+                    if idx == 0:
+                        note_id = new_note["id"]
             db.execute("""UPDATE meeting_jobs SET status='completed',stage='completed',
-                title=?,meeting_date=?,insights=?,error=NULL,updated_at=? WHERE id=?""",
-                (title,meeting_date,payload,now(),job_id))
-            if insights:
+                title=?,meeting_date=?,insights=?,generated_note_id=?,
+                error=NULL,updated_at=? WHERE id=?""",
+                (title,date_value,payload,note_id,now(),job_id))
+            if row["kind"] == "meeting" and insights:
                 tasks.import_meeting(job_id, connection=db)
 
     def fail(self, job_id: str, reason: str):
@@ -158,6 +197,8 @@ class MeetingStore:
             return None
         return {
             "id": job_id, "title": job["title"], "meeting_date": job["meeting_date"],
+            "kind": job["kind"], "generated_note_id": job["generated_note_id"],
+            "clean_text": self.cleaned(job_id, limit=1)["items"][0] if self.cleaned(job_id, limit=1)["items"] else None,
             "status": job["status"], "stage": job["stage"],
             "error": job["error"], "duration": job["duration"],
             "processed_seconds": min(job["duration"], job["next_sample"]/16000),
