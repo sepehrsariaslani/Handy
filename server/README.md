@@ -14,10 +14,14 @@ reflects actual model availability, not a fake success.
 On `bun run dev:mac`, **new** Meeting and Note recordings use the same
 native `TranscriptionManager` as the standard Transcribe action. The server
 runs the built app's `--transcribe-file --model <selected model> --json`
-headless mode on bounded 120-second WAV windows. That command uses Handy's
-normal language handling, speech chunking, custom vocabulary and final text
-normalization, then returns the result for Qwen cleanup, meeting summaries,
-decisions and tasks.
+headless mode on the whole original WAV for sessions up to ten minutes.
+For longer recordings it uses bounded ten-minute windows with five seconds
+of overlap, then removes only confidently duplicated boundary words. Both
+paths retain the exact final audio samples, including partial final windows.
+That command uses Handy's normal language handling, speech chunking, custom
+vocabulary and final text normalization, then returns the result for Qwen
+cleanup, meeting summaries, decisions and tasks. If Qwen removes the end of
+a transcript block, Handy preserves the original ASR text instead.
 
 The model is pinned when recording starts; selecting another downloaded
 model later does not silently change the already-recorded job. The native
@@ -27,8 +31,10 @@ The API starts before Cargo compiles the app, so start the native development
 window before asking the API to transcribe.
 
 Native headless results currently contain text but not sentence timestamps.
-Meeting transcript pages therefore show one entry per up-to-120-second
-window; optional diarization runs separately. For a legacy recording without
+Meeting transcript pages therefore show one entry per native transcription
+window, not necessarily each spoken sentence; optional diarization runs separately.
+The final clean transcript is loaded continuously in the UI regardless of
+the internal window boundaries. For a legacy recording without
 a pinned model ID, the original configured GGUF transcribe-cli backend is
 retained. Non-local/remote servers keep their own configured ASR runner.
 
