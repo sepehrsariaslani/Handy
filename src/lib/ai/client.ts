@@ -179,12 +179,16 @@ export class HandyAiClient {
     });
   }
 
-  listTasks(status?: import("./contracts").AiTaskStatus): Promise<import("./contracts").AiTaskPage> {
+  listTasks(
+    status?: import("./contracts").AiTaskStatus,
+  ): Promise<import("./contracts").AiTaskPage> {
     const params = status ? "?status=" + encodeURIComponent(status) : "";
     return this.request("/v1/tasks" + params);
   }
 
-  createTask(input: import("./contracts").AiTaskInput): Promise<import("./contracts").AiTask> {
+  createTask(
+    input: import("./contracts").AiTaskInput,
+  ): Promise<import("./contracts").AiTask> {
     return this.request("/v1/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -209,16 +213,22 @@ export class HandyAiClient {
     return this.request("/v1/tasks/" + id, { method: "DELETE" });
   }
 
-  importMeetingTasks(jobId: string): Promise<{ created: number; tasks: import("./contracts").AiTask[] }> {
+  importMeetingTasks(
+    jobId: string,
+  ): Promise<{ created: number; tasks: import("./contracts").AiTask[] }> {
     if (!/^[a-f0-9]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
     return this.request("/v1/tasks/from-meeting/" + jobId, { method: "POST" });
   }
 
-  listConversations(): Promise<{ items: import("./contracts").AiConversation[] }> {
+  listConversations(): Promise<{
+    items: import("./contracts").AiConversation[];
+  }> {
     return this.request("/v1/memory/conversations");
   }
 
-  createConversation(title: string): Promise<import("./contracts").AiConversation> {
+  createConversation(
+    title: string,
+  ): Promise<import("./contracts").AiConversation> {
     return this.request("/v1/memory/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -226,7 +236,9 @@ export class HandyAiClient {
     });
   }
 
-  getConversation(id: string): Promise<import("./contracts").AiConversationDetail> {
+  getConversation(
+    id: string,
+  ): Promise<import("./contracts").AiConversationDetail> {
     if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid conversation ID");
     return this.request("/v1/memory/conversations/" + id);
   }
@@ -239,12 +251,21 @@ export class HandyAiClient {
   askInConversation(
     conversation: import("./contracts").AiConversation,
     body: import("./contracts").AiMemoryQuery,
-  ): Promise<{ conversation: import("./contracts").AiConversation; result: import("./contracts").AiMemoryResponse }> {
-    return this.request("/v1/memory/conversations/" + conversation.id + "/turns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, expected_turns: conversation.turn_count }),
-    });
+  ): Promise<{
+    conversation: import("./contracts").AiConversation;
+    result: import("./contracts").AiMemoryResponse;
+  }> {
+    return this.request(
+      "/v1/memory/conversations/" + conversation.id + "/turns",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          expected_turns: conversation.turn_count,
+        }),
+      },
+    );
   }
 
   getSemanticStatus(): Promise<import("./contracts").AiSemanticStatus> {
@@ -252,7 +273,8 @@ export class HandyAiClient {
   }
 
   syncSemantic(limit = 100): Promise<{ indexed: number; model: string }> {
-    return this.request("/v1/memory/semantic/sync?limit=" + limit, { method: "POST" });
+    return this.request("/v1/memory/semantic/sync?limit=" + limit, {
+      method: "POST",
+    });
   }
-
 }

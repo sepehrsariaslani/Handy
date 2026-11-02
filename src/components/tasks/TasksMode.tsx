@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckSquare, Plus, RefreshCw, Save, Trash2, FileText } from "lucide-react";
+import {
+  CheckSquare,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  FileText,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
@@ -25,8 +32,11 @@ export function TasksMode() {
   const [count, setCount] = useState(0);
   const client = useMemo(() => {
     if (!apiKey.trim()) return null;
-    try { return new HandyAiClient(serverUrl, apiKey.trim()); }
-    catch { return null; }
+    try {
+      return new HandyAiClient(serverUrl, apiKey.trim());
+    } catch {
+      return null;
+    }
   }, [apiKey, serverUrl]);
 
   const reload = useCallback(async () => {
@@ -36,7 +46,9 @@ export function TasksMode() {
       return;
     }
     try {
-      const page = await client.listTasks(filter === "all" ? undefined : filter);
+      const page = await client.listTasks(
+        filter === "all" ? undefined : filter,
+      );
       setTasks(page.items);
       setCount(page.total);
     } catch (error) {
@@ -44,7 +56,9 @@ export function TasksMode() {
     }
   }, [client, filter, t]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const choose = (task: AiTask) => {
     setSelected(task);
@@ -66,7 +80,8 @@ export function TasksMode() {
     if (!client || busy || !title.trim()) return;
     setBusy(true);
     const input: AiTaskInput = {
-      title: title.trim(), assignee: assignee.trim() || null,
+      title: title.trim(),
+      assignee: assignee.trim() || null,
       due_date: dueDate || null,
     };
     try {
@@ -86,7 +101,13 @@ export function TasksMode() {
   };
 
   const remove = async () => {
-    if (!client || !selected || busy || !window.confirm(t("tasks.deleteConfirm"))) return;
+    if (
+      !client ||
+      !selected ||
+      busy ||
+      !window.confirm(t("tasks.deleteConfirm"))
+    )
+      return;
     setBusy(true);
     try {
       await client.deleteTask(selected.id);
@@ -126,20 +147,29 @@ export function TasksMode() {
       <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           {t("tasks.serverUrl")}
-          <input type="url" value={serverUrl}
+          <input
+            type="url"
+            value={serverUrl}
             className="border border-line bg-transparent rounded-lg px-3 py-2"
             onChange={(event) => setServerUrl(event.target.value)}
             onBlur={() => {
-              try { setServerUrl(saveServerUrl(serverUrl)); }
-              catch (error) { toast.error(toError(error)); }
+              try {
+                setServerUrl(saveServerUrl(serverUrl));
+              } catch (error) {
+                toast.error(toError(error));
+              }
             }}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           {t("tasks.apiKey")}
-          <input type="password" autoComplete="off" value={apiKey}
+          <input
+            type="password"
+            autoComplete="off"
+            value={apiKey}
             className="border border-line bg-transparent rounded-lg px-3 py-2"
-            onChange={(event) => setApiKey(event.target.value)} />
+            onChange={(event) => setApiKey(event.target.value)}
+          />
         </label>
         <p className="text-xs text-ink-3">{t("tasks.privacy")}</p>
       </section>
@@ -147,13 +177,20 @@ export function TasksMode() {
       <section className="rounded-xl border border-line p-3 flex gap-2 flex-wrap items-end">
         <label className="flex-1 min-w-44 text-sm flex flex-col gap-1">
           {t("tasks.meetingId")}
-          <input className="border border-line bg-transparent rounded-lg px-3 py-2"
-            value={meetingId} placeholder={t("tasks.meetingPlaceholder")}
-            maxLength={32} onChange={(event) => setMeetingId(event.target.value.trim())} />
+          <input
+            className="border border-line bg-transparent rounded-lg px-3 py-2"
+            value={meetingId}
+            placeholder={t("tasks.meetingPlaceholder")}
+            maxLength={32}
+            onChange={(event) => setMeetingId(event.target.value.trim())}
+          />
         </label>
-        <button type="button" disabled={busy || !client || !/^[0-9a-f]{32}$/.test(meetingId)}
+        <button
+          type="button"
+          disabled={busy || !client || !/^[0-9a-f]{32}$/.test(meetingId)}
           onClick={() => void importTasks()}
-          className="rounded-lg border border-line px-3 py-2 text-sm flex items-center gap-2 disabled:opacity-50">
+          className="rounded-lg border border-line px-3 py-2 text-sm flex items-center gap-2 disabled:opacity-50"
+        >
           <FileText size={16} /> {t("tasks.importMeeting")}
         </button>
       </section>
@@ -163,30 +200,49 @@ export function TasksMode() {
           <div className="flex flex-wrap gap-2 items-center justify-between">
             <label className="text-sm flex flex-col gap-1">
               {t("tasks.filter")}
-              <select value={filter}
+              <select
+                value={filter}
                 className="rounded-lg border border-line bg-background px-2 py-2"
-                onChange={(event) => setFilter(event.target.value as AiTaskStatus | "all")}>
+                onChange={(event) =>
+                  setFilter(event.target.value as AiTaskStatus | "all")
+                }
+              >
                 <option value="all">{t("tasks.status.all")}</option>
                 <option value="todo">{t("tasks.status.todo")}</option>
-                <option value="in_progress">{t("tasks.status.in_progress")}</option>
+                <option value="in_progress">
+                  {t("tasks.status.in_progress")}
+                </option>
                 <option value="done">{t("tasks.status.done")}</option>
                 <option value="cancelled">{t("tasks.status.cancelled")}</option>
               </select>
             </label>
-            <button type="button" className="rounded-lg border border-line p-2"
-              onClick={() => void reload()}><RefreshCw size={16} /></button>
+            <button
+              type="button"
+              className="rounded-lg border border-line p-2"
+              onClick={() => void reload()}
+            >
+              <RefreshCw size={16} />
+            </button>
           </div>
-          <button type="button" onClick={clear}
-            className="flex justify-center items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm">
+          <button
+            type="button"
+            onClick={clear}
+            className="flex justify-center items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm"
+          >
             <Plus size={16} /> {t("tasks.new")}
           </button>
           <p className="text-xs text-ink-3">{t("tasks.count", { count })}</p>
           <div className="flex flex-col gap-1 max-h-[440px] overflow-y-auto">
             {tasks.map((task) => (
-              <button key={task.id} type="button"
-                className={"rounded-lg p-3 text-start hover:bg-line " +
-                  (selected?.id === task.id ? "bg-line" : "")}
-                onClick={() => choose(task)}>
+              <button
+                key={task.id}
+                type="button"
+                className={
+                  "rounded-lg p-3 text-start hover:bg-line " +
+                  (selected?.id === task.id ? "bg-line" : "")
+                }
+                onClick={() => choose(task)}
+              >
                 <span className="text-sm font-medium block">{task.title}</span>
                 <span className="text-xs text-ink-3 block">
                   {t("tasks.status." + task.status)}
@@ -195,50 +251,76 @@ export function TasksMode() {
                 </span>
               </button>
             ))}
-            {!tasks.length && <p className="text-sm text-ink-3">{t("tasks.empty")}</p>}
+            {!tasks.length && (
+              <p className="text-sm text-ink-3">{t("tasks.empty")}</p>
+            )}
           </div>
         </section>
 
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
           <label className="text-sm flex flex-col gap-1">
             {t("tasks.taskTitle")}
-            <textarea rows={3} maxLength={500}
+            <textarea
+              rows={3}
+              maxLength={500}
               className="border border-line bg-transparent rounded-lg px-3 py-2"
-              value={title} onChange={(event) => setTitle(event.target.value)} />
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
           </label>
           <label className="text-sm flex flex-col gap-1">
             {t("tasks.assignee")}
-            <input maxLength={120}
+            <input
+              maxLength={120}
               className="border border-line bg-transparent rounded-lg px-3 py-2"
-              value={assignee} onChange={(event) => setAssignee(event.target.value)} />
+              value={assignee}
+              onChange={(event) => setAssignee(event.target.value)}
+            />
           </label>
           <label className="text-sm flex flex-col gap-1">
             {t("tasks.dueDate")}
-            <input type="date"
+            <input
+              type="date"
               className="border border-line bg-transparent rounded-lg px-3 py-2"
-              value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+            />
           </label>
           {selected && (
             <label className="text-sm flex flex-col gap-1">
               {t("tasks.state")}
-              <select className="border border-line bg-background rounded-lg px-3 py-2"
-                value={status} onChange={(event) => setStatus(event.target.value as AiTaskStatus)}>
+              <select
+                className="border border-line bg-background rounded-lg px-3 py-2"
+                value={status}
+                onChange={(event) =>
+                  setStatus(event.target.value as AiTaskStatus)
+                }
+              >
                 <option value="todo">{t("tasks.status.todo")}</option>
-                <option value="in_progress">{t("tasks.status.in_progress")}</option>
+                <option value="in_progress">
+                  {t("tasks.status.in_progress")}
+                </option>
                 <option value="done">{t("tasks.status.done")}</option>
                 <option value="cancelled">{t("tasks.status.cancelled")}</option>
               </select>
             </label>
           )}
           <div className="flex gap-2 flex-wrap">
-            <button type="button" disabled={busy || !client || !title.trim()}
+            <button
+              type="button"
+              disabled={busy || !client || !title.trim()}
               onClick={() => void save()}
-              className="bg-logo-primary text-white rounded-lg px-3 py-2 text-sm flex gap-2 items-center disabled:opacity-50">
+              className="bg-logo-primary text-white rounded-lg px-3 py-2 text-sm flex gap-2 items-center disabled:opacity-50"
+            >
               <Save size={16} /> {t("tasks.save")}
             </button>
             {selected && (
-              <button type="button" disabled={busy || !client} onClick={() => void remove()}
-                className="border border-line rounded-lg px-3 py-2 text-sm flex gap-2 items-center disabled:opacity-50">
+              <button
+                type="button"
+                disabled={busy || !client}
+                onClick={() => void remove()}
+                className="border border-line rounded-lg px-3 py-2 text-sm flex gap-2 items-center disabled:opacity-50"
+              >
                 <Trash2 size={16} /> {t("tasks.delete")}
               </button>
             )}
@@ -250,8 +332,10 @@ export function TasksMode() {
                 {t("tasks.fromMeeting")}: {selected.source_meeting_id}
               </p>
               {selected.source_quotes.map((quote) => (
-                <blockquote key={quote.id}
-                  className="border-s-2 border-line ps-3 text-sm whitespace-pre-wrap">
+                <blockquote
+                  key={quote.id}
+                  className="border-s-2 border-line ps-3 text-sm whitespace-pre-wrap"
+                >
                   <span className="text-xs text-ink-3">{quote.id}</span>
                   <p>{quote.text}</p>
                 </blockquote>

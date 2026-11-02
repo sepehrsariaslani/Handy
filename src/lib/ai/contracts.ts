@@ -160,7 +160,6 @@ export interface AiMemoryResponse {
   applied_until: string | null;
 }
 
-
 /** Phase-8 tasks and durable memory conversations. */
 export type AiTaskStatus = "todo" | "in_progress" | "done" | "cancelled";
 export interface AiTask {

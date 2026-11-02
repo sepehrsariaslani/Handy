@@ -46,7 +46,7 @@ HANDY_SEMANTIC_MODEL=intfloat/multilingual-e5-small
 
 Restart the single-worker Handy API and open Memory -> **Index next 100 snippets**. Repeat until the index reports no new documents. This indexing step is CPU-bound and should be scheduled outside peak usage for long archives. New transcripts and edited notes require incremental reindexing.
 
-For notes, tasks, conversations and lexical memory *without* any AI model:
+For notes, tasks, conversations and lexical memory _without_ any AI model:
 
 ```bash
 HANDY_ASR_ENABLED=false

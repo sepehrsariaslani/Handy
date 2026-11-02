@@ -242,7 +242,8 @@ export const MeetingMode = () => {
   };
 
   const importAsTasks = async () => {
-    if (!job || job.status !== "completed" || !job.insights || !apiKey || busy) return;
+    if (!job || job.status !== "completed" || !job.insights || !apiKey || busy)
+      return;
     setBusy(true);
     try {
       const client = new HandyAiClient(serverUrl, apiKey);
