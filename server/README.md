@@ -56,6 +56,29 @@ It requires NVIDIA Container Toolkit and an explicit private network path to
 the Qwen service. The Qwen host-loopback address is not reachable inside an
 ordinary Docker container; configure `HANDY_QWEN_BASE_URL` appropriately.
 
+## Run Qwen locally with Ollama (macOS and CPU development)
+
+The OpenAI-compatible Ollama API can serve the same Qwen adapter without vLLM.
+Keep Ollama running, pull `qwen3.5:9b`, and start the Handy API with:
+
+```bash
+export HANDY_LLM_ENABLED=true
+export HANDY_QWEN_BASE_URL=http://127.0.0.1:11434/v1
+export HANDY_QWEN_MODEL=qwen3.5:9b
+export HANDY_QWEN_API_KEY=ollama
+# Optional explicit override if Ollama runs on a port other than 11434:
+# export HANDY_QWEN_PROVIDER=ollama
+```
+
+The worker recognizes localhost port 11434 automatically. It sends
+`reasoning_effort: "none"` to Ollama's OpenAI-compatible chat-completions
+endpoint instead of vLLM's `chat_template_kwargs`. Production vLLM
+deployments retain their original request format; use
+`HANDY_QWEN_PROVIDER=vllm` to force that format. Backend restart is required
+after environment changes. `/v1/models/status` confirms reachability but
+does **not** prove inference; test `/v1/text/cleanup` separately. A cold
+9B model on a memory-limited Mac may be slow or fail to allocate memory.
+
 ## Endpoints
 
 - `GET /health` — liveness only.
