@@ -8,11 +8,11 @@ The pre-existing Meeting Mode is in `src-tauri/src/commands/meeting.rs` and `src
 
 ## Modes and boundaries
 
-| Mode | Purpose | Future worker | Phase-1 behavior |
-| --- | --- | --- | --- |
-| `dictation` | Incremental text injection with tone control | Whisper + Qwen | Session metadata contract |
-| `meeting` | Speaker transcript, decisions, action items and evidence links | Whisper + diarization + Qwen | Existing local recorder; remote processing deliberately unavailable |
-| `note_taking` | Lecture chapters, highlights, questions and citations | Whisper + Qwen | Session metadata contract |
+| Mode          | Purpose                                                        | Future worker                | Phase-1 behavior                                                    |
+| ------------- | -------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------- |
+| `dictation`   | Incremental text injection with tone control                   | Whisper + Qwen               | Session metadata contract                                           |
+| `meeting`     | Speaker transcript, decisions, action items and evidence links | Whisper + diarization + Qwen | Existing local recorder; remote processing deliberately unavailable |
+| `note_taking` | Lecture chapters, highlights, questions and citations          | Whisper + Qwen               | Session metadata contract                                           |
 
 All three modes share `SessionCreate`, `SessionRecord`, `TranscriptSegment` (raw + optional cleaned, stable IDs, timestamps), and source-backed evidence. TS mirror: `src/lib/ai/contracts.ts`; Python source: `server/handy_server/schemas.py`. Contract version: `v1`.
 
