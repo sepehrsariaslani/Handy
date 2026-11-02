@@ -261,3 +261,25 @@ def test_note_capture_uses_same_whisper_pipeline_and_persists_automatically(engi
     )
     assert again.json()["id"] == job_id
     assert client.get("/v1/notes", headers=HEADERS).json()["total"] == 1
+
+
+def test_whisper_transcript_survives_unavailable_qwen(tmp_path):
+    """Optional summarization outage must not erase a successful ASR transcript."""
+    settings = Settings(api_key=KEY, db_path=tmp_path / "offline-llm.db",
+                        llm_enabled=False, max_meeting_bytes=3000000)
+    runtime = InferenceRuntime(settings, asr=MockASR(), llm=QwenWorker(settings))
+    with TestClient(create_app(settings, runtime=runtime)) as client:
+        submitted = client.post(
+            "/v1/meetings", headers=HEADERS,
+            files={"audio": ("fa.wav", wav_data(2), "audio/wav")},
+            data={"meeting_id": "offline-qwen", "language": "fa"},
+        )
+        assert submitted.status_code == 202, submitted.text
+        result = wait_for(client, submitted.json()["id"], "failed")
+        assert result["transcript_count"] == 1
+        assert "تصمیم" in result["clean_text"]
+        blocks = client.get(
+            "/v1/meetings/" + result["id"] + "/cleaned", headers=HEADERS,
+        ).json()
+        assert blocks["total"] == 1
+        assert "تصمیم" in blocks["items"][0]
