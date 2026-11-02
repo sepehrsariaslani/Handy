@@ -647,8 +647,8 @@ export const MeetingMode = () => {
                   className="border border-line bg-background rounded-lg px-3 py-2"
                 >
                   <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
-                  <option value="fa">فارسی (Persian)</option>
-                  <option value="en">English</option>
+                  <option value="fa">{t("meeting.persianLanguage", { defaultValue: "فارسی (Persian)" })}</option>
+                  <option value="en">{t("meeting.englishLanguage", { defaultValue: "English" })}</option>
                 </select>
               </label>
             </div>
