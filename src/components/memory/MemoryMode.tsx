@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpenCheck, Search, Sparkles, CalendarDays } from "lucide-react";
+import { BookOpenCheck, Search, Sparkles, CalendarDays, Plus, Trash2, Database } from "lucide-react";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type {
@@ -8,6 +8,9 @@ import type {
   AiMemoryResponse,
   AiMemoryScope,
   AiMemorySource,
+  AiConversation,
+  AiConversationTurn,
+  AiSemanticStatus,
 } from "@/lib/ai/contracts";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
 
@@ -32,6 +35,10 @@ export function MemoryMode() {
   const [until, setUntil] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AiMemoryResponse | null>(null);
+  const [conversations, setConversations] = useState<AiConversation[]>([]);
+  const [conversation, setConversation] = useState<AiConversation | null>(null);
+  const [turns, setTurns] = useState<AiConversationTurn[]>([]);
+  const [semanticStatus, setSemanticStatus] = useState<AiSemanticStatus | null>(null);
 
   const client = useMemo(() => {
     if (!token.trim()) return null;
@@ -41,6 +48,87 @@ export function MemoryMode() {
       return null;
     }
   }, [serverUrl, token]);
+
+  useEffect(() => {
+    let active = true;
+    if (!client) {
+      setConversations([]);
+      setConversation(null);
+      setTurns([]);
+      setSemanticStatus(null);
+      return;
+    }
+    void client.listConversations().then((list) => {
+      if (active) setConversations(list.items);
+    }).catch(() => undefined);
+    void client.getSemanticStatus().then((status) => {
+      if (active) setSemanticStatus(status);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [client]);
+
+  const createConversation = async () => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const fresh = await client.createConversation(t("memory.newConversation"));
+      setConversation(fresh);
+      setTurns([]);
+      setResult(null);
+      const list = await client.listConversations();
+      setConversations(list.items);
+    } catch (error) {
+      toast.error(t("memory.requestError"), { description: errorText(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openConversation = async (id: string) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const record = await client.getConversation(id);
+      setConversation(record.conversation);
+      setTurns(record.turns);
+      setResult(null);
+    } catch (error) {
+      toast.error(t("memory.requestError"), { description: errorText(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteConversation = async () => {
+    if (!client || !conversation || busy ||
+        !window.confirm(t("memory.deleteConversationConfirm"))) return;
+    setBusy(true);
+    try {
+      await client.deleteConversation(conversation.id);
+      setConversation(null);
+      setTurns([]);
+      setResult(null);
+      setConversations((current) => current.filter((item) => item.id !== conversation.id));
+    } catch (error) {
+      toast.error(t("memory.requestError"), { description: errorText(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const indexSemantic = async () => {
+    if (!client || !semanticStatus?.enabled || busy) return;
+    setBusy(true);
+    try {
+      const result = await client.syncSemantic(100);
+      setSemanticStatus(await client.getSemanticStatus());
+      toast.success(t("memory.indexed", { count: result.indexed }));
+    } catch (error) {
+      toast.error(t("memory.requestError"), { description: errorText(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (mode: "ask" | "search") => {
     if (busy || !client || !question.trim()) return;
@@ -57,11 +145,24 @@ export function MemoryMode() {
     setBusy(true);
     setResult(null);
     try {
-      const answer =
-        mode === "ask"
-          ? await client.askMemory(body)
-          : await client.searchMemory(body);
-      setResult(answer);
+      if (mode === "ask" && conversation) {
+        const response = await client.askInConversation(conversation, body);
+        setConversation(response.conversation);
+        setResult(response.result);
+        const loaded = await client.getConversation(conversation.id);
+        setTurns(loaded.turns);
+        setConversations((current) =>
+          current.map((item) =>
+            item.id === loaded.conversation.id ? loaded.conversation : item,
+          ),
+        );
+      } else {
+        const answer =
+          mode === "ask"
+            ? await client.askMemory(body)
+            : await client.searchMemory(body);
+        setResult(answer);
+      }
     } catch (error) {
       toast.error(t("memory.requestError"), {
         description: errorText(error),
@@ -156,6 +257,74 @@ export function MemoryMode() {
           />
         </label>
         <p className="text-xs text-ink-3">{t("memory.privacy")}</p>
+      </section>
+
+      <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <h2 className="font-semibold">{t("memory.conversations")}</h2>
+          <button type="button" disabled={!client || busy}
+            onClick={() => void createConversation()}
+            className="border border-line rounded-lg px-3 py-2 flex gap-2 items-center text-sm disabled:opacity-50">
+            <Plus size={16} /> {t("memory.newConversation")}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <select value={conversation?.id ?? ""}
+            disabled={!client || busy}
+            className="flex-1 min-w-40 border border-line bg-background rounded-lg px-3 py-2 text-sm"
+            onChange={(event) => {
+              if (event.target.value) void openConversation(event.target.value);
+              else { setConversation(null); setTurns([]); setResult(null); }
+            }}>
+            <option value="">{t("memory.oneOff")}</option>
+            {conversations.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title} ({item.turn_count})
+              </option>
+            ))}
+          </select>
+          {conversation && (
+            <button type="button" onClick={() => void deleteConversation()}
+              disabled={busy}
+              className="border border-line rounded-lg p-2 disabled:opacity-50"
+              aria-label={t("memory.deleteConversation")}>
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+        {turns.length > 0 && (
+          <div className="flex flex-col gap-3 max-h-72 overflow-y-auto">
+            {turns.map((turn) => (
+              <div key={turn.id} className="text-sm border-b border-line pb-2">
+                <p className="font-medium whitespace-pre-wrap">{turn.question}</p>
+                <p className="text-ink-3 whitespace-pre-wrap mt-1">
+                  {turn.answer || t("memory.noAnswer")}
+                </p>
+                {turn.citations.length > 0 && (
+                  <p className="text-xs text-ink-3 mt-1">
+                    {turn.citations.join(" · ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="rounded-xl border border-line p-4 flex items-center gap-3 flex-wrap">
+        <Database size={18} />
+        <div className="flex-1 min-w-40">
+          <h2 className="font-semibold text-sm">{t("memory.semantic")}</h2>
+          <p className="text-xs text-ink-3">
+            {semanticStatus?.enabled
+              ? t("memory.semanticCount", { count: semanticStatus.indexed })
+              : t("memory.semanticOff")}
+          </p>
+        </div>
+        <button type="button" disabled={!client || busy || !semanticStatus?.enabled}
+          onClick={() => void indexSemantic()}
+          className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+          {t("memory.syncSemantic")}
+        </button>
       </section>
 
       <form
