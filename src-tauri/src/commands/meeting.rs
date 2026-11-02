@@ -353,3 +353,30 @@ pub async fn get_meeting_job(
         .await
         .map_err(|e| e.to_string())
 }
+
+
+#[tauri::command]
+#[specta::specta]
+pub async fn retry_meeting_job(
+    server_url: String,
+    api_key: Option<String>,
+    job_id: String,
+) -> Result<MeetingJob, String> {
+    if job_id.len() != 32 || !job_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Invalid job ID".into());
+    }
+    let url = server_endpoint(&server_url, &format!("v1/meetings/{job_id}/retry"))?;
+    let mut request = client()?.post(url);
+    if let Some(key) = api_key.filter(|s| !s.is_empty()) {
+        request = request.bearer_auth(key);
+    }
+    request
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}

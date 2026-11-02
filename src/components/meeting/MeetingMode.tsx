@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Mic, Square, UploadCloud, RefreshCw, Server, FileAudio, ClipboardList } from "lucide-react";
@@ -70,6 +70,9 @@ export const MeetingMode = () => {
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<MeetingJob | null>(null);
   const [visibleCount, setVisibleCount] = useState(150);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
+  const speakers = useMemo(() => [...new Set(job?.transcript?.map((entry) => entry.speaker) ?? [])], [job?.transcript]);
 
   const refresh = useCallback(async () => {
     const result = await invoke<MeetingInfo[]>("list_meetings");
@@ -146,6 +149,8 @@ export const MeetingMode = () => {
     setJobId(null);
     setJob(null);
     setVisibleCount(150);
+    setTranscriptOpen(false);
+    setSpeakerNames({});
     try {
       const result = await invoke<MeetingJob>("submit_meeting", {
         id: meeting.id,
@@ -162,6 +167,19 @@ export const MeetingMode = () => {
     }
   };
 
+  const retry = async () => {
+    if (!jobId || busy) return;
+    setBusy(true);
+    try {
+      const result = await invoke<MeetingJob>("retry_meeting_job", { serverUrl, apiKey: apiKey || null, jobId });
+      setJob(result);
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sources = (ids: string[]) => (
     <span className="inline-flex flex-wrap gap-1 ps-2">
       {ids.map((id) => (
@@ -171,6 +189,7 @@ export const MeetingMode = () => {
           className="text-xs text-logo-primary underline"
           onClick={() => {
             const index = job?.transcript?.findIndex((segment) => segment.id === id) ?? -1;
+            setTranscriptOpen(true);
             if (index >= visibleCount) setVisibleCount(index + 1);
             window.setTimeout(() => document.getElementById("meeting-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
           }}
@@ -189,7 +208,7 @@ export const MeetingMode = () => {
           {rows.map((entry, index) => (
             <li key={index} className="rounded-lg border border-line p-3 text-sm">
               <span>{entry.text}</span>
-              {entry.assignee && <span className="text-ink-3 ms-2">· {t("meeting.assignee")}: {entry.assignee}</span>}
+              {entry.assignee && <span className="text-ink-3 ms-2">· {t("meeting.assignee")}: {speakerNames[entry.assignee] || entry.assignee}</span>}
               {entry.due_date && <span className="text-ink-3 ms-2">· {t("meeting.dueDate")}: {entry.due_date}</span>}
               {sources(entry.source_ids ?? [])}
             </li>
@@ -264,6 +283,8 @@ export const MeetingMode = () => {
               if (meeting.remote_job_id) {
                 setJob(null);
                 setVisibleCount(150);
+                setTranscriptOpen(false);
+                setSpeakerNames({});
                 setServerUrl(meeting.remote_server_url || serverUrl);
                 setJobId(meeting.remote_job_id);
               } else {
@@ -282,6 +303,9 @@ export const MeetingMode = () => {
           <h2 className="font-semibold flex items-center gap-2"><ClipboardList size={18}/>{t("meeting.results")}</h2>
           <p className="text-sm text-ink-3">{t("meeting.status")}: {job.status} · {job.stage ?? "-"}</p>
           {job.error && <p role="alert" className="text-red-500 text-sm">{job.error}</p>}
+          {job.status === "failed" && (
+            <button type="button" disabled={busy} onClick={() => void retry()} className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">{t("meeting.retry")}</button>
+          )}
           {job.insights && (
             <>
               <section><h3 className="font-semibold mb-2">{t("meeting.summary")}</h3><p className="text-sm whitespace-pre-wrap">{job.insights.summary}</p></section>
@@ -290,13 +314,25 @@ export const MeetingMode = () => {
               {evidence(job.insights.open_questions, t("meeting.questions"))}
             </>
           )}
+          {speakers.length > 0 && (
+            <section className="w-full flex flex-col gap-2">
+              <h3 className="font-semibold">{t("meeting.speakerNames")}</h3>
+              {speakers.map((speaker) => (
+                <label key={speaker} className="flex items-center gap-3 text-sm">
+                  <span className="min-w-28">{speaker}</span>
+                  <input className="flex-1 rounded-lg border border-line bg-transparent px-3 py-2" placeholder={t("meeting.speakerPlaceholder")}
+                    value={speakerNames[speaker] ?? ""} onChange={(event) => setSpeakerNames((current) => ({ ...current, [speaker]: event.target.value }))} />
+                </label>
+              ))}
+            </section>
+          )}
           {job.transcript && (
-            <details className="w-full" open={Boolean(job.error)}>
+            <details className="w-full" open={transcriptOpen || Boolean(job.error)} onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}>
               <summary className="cursor-pointer font-semibold">{t("meeting.transcript")}</summary>
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
                 {job.transcript.slice(0, visibleCount).map((item) => (
                   <p key={item.id} id={"meeting-" + item.id} className="text-sm border-b border-line pb-2">
-                    <span className="font-medium">{item.speaker}</span>
+                    <span className="font-medium">{speakerNames[item.speaker] || item.speaker}</span>
                     <span className="text-xs text-ink-3 ms-2">{formatTime(item.start)} · {item.id}</span>
                     <span className="block whitespace-pre-wrap mt-1">{item.text}</span>
                   </p>
