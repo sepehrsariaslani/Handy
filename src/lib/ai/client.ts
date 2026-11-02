@@ -181,9 +181,15 @@ export class HandyAiClient {
 
   listTasks(
     status?: import("./contracts").AiTaskStatus,
+    offset = 0,
+    limit = 100,
   ): Promise<import("./contracts").AiTaskPage> {
-    const params = status ? "?status=" + encodeURIComponent(status) : "";
-    return this.request("/v1/tasks" + params);
+    const params = new URLSearchParams({
+      offset: String(offset),
+      limit: String(limit),
+    });
+    if (status) params.set("status", status);
+    return this.request("/v1/tasks?" + params.toString());
   }
 
   createTask(
