@@ -1,7 +1,9 @@
 """Inference adapters. Optional GPU dependencies load only when explicitly enabled."""
 import asyncio
 from pathlib import Path
+import logging
 import threading
+from urllib.parse import urlsplit
 from time import monotonic
 
 import httpx
@@ -10,6 +12,8 @@ from .config import Settings, validate_llm_url
 from .fidelity import protect_source
 from .prompts import build_messages
 from .schemas import CleanupRequest, CleanupResponse, TranscriptSegment, TranscriptionResponse
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerUnavailable(RuntimeError):
@@ -107,6 +111,13 @@ class QwenWorker:
         self._checked_at = monotonic()
         return ok
 
+    def _is_ollama(self) -> bool:
+        if self.settings.qwen_provider != "auto":
+            return self.settings.qwen_provider == "ollama"
+        # The official Ollama localhost API uses port 11434; allow an explicit
+        # override for non-standard ports via HANDY_QWEN_PROVIDER.
+        return urlsplit(self.settings.qwen_base_url).port == 11434
+
     async def cleanup(self, body: CleanupRequest) -> CleanupResponse:
         if len(body.text) > self.settings.max_text_chars:
             raise ValueError("Text exceeds the configured length limit")
@@ -120,12 +131,18 @@ class QwenWorker:
             "temperature": 0.1,
             "max_tokens": 4096,
             "stream": False,
-            "chat_template_kwargs": {"enable_thinking": False},
         }
+        ollama = self._is_ollama()
+        if ollama:
+            # Ollama's OpenAI-compatible endpoint ignores vLLM's
+            # chat_template_kwargs. Use its documented thinking control.
+            payload["reasoning_effort"] = "none"
+        else:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         base = validate_llm_url(self.settings.qwen_base_url)
         try:
             async with httpx.AsyncClient(
-                transport=self._transport, timeout=httpx.Timeout(90.0, connect=5.0), follow_redirects=False
+                transport=self._transport, timeout=httpx.Timeout(240.0 if ollama else 90.0, connect=5.0), follow_redirects=False
             ) as client:
                 response = await client.post(
                     base + "/chat/completions",
@@ -134,9 +151,16 @@ class QwenWorker:
                 )
                 response.raise_for_status()
                 edited = response.json()["choices"][0]["message"]["content"]
-                if not isinstance(edited, str):
-                    raise ValueError("Invalid model response")
+                if not isinstance(edited, str) or not edited.strip():
+                    raise ValueError("Empty or invalid model response")
         except (httpx.HTTPError, ValueError, TypeError, KeyError, IndexError) as exc:
+            response = getattr(exc, "response", None)
+            logger.warning(
+                "Qwen inference failed (provider=%s, error=%s, status=%s)",
+                "ollama" if ollama else "vllm",
+                type(exc).__name__,
+                getattr(response, "status_code", None),
+            )
             raise WorkerFailure(f"Qwen inference failed ({type(exc).__name__})") from None
         warnings = protect_source(body.text, edited, body.protected_terms)
         # Reasoning must never appear in the displayed transcript.
