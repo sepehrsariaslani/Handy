@@ -128,7 +128,7 @@ export function NotesMode() {
         .filter(Boolean)
         .join(" ")
         .trim();
-      return [originalContent.trim(), recorded].filter(Boolean).join("\\n\\n");
+      return [originalContent.trim(), recorded].filter(Boolean).join("\n\n");
     };
 
     const finish = async () => {
@@ -175,7 +175,12 @@ export function NotesMode() {
     const session = new LiveStreamSession(
       serverUrl,
       authToken,
-      { mode: "note_taking", language: "fa", tone: "professional", cleanup: true },
+      {
+        mode: "note_taking",
+        language: "fa",
+        tone: "professional",
+        cleanup: true,
+      },
       {
         state: (state) => {
           if (state === "completed") {
