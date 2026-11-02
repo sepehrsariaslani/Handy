@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Start the local AI API with Handy's native dev window on macOS.
+# Reuse an authorized existing server; never kill or adopt unrelated processes.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+bash scripts/link-dev-whisper-model.sh
+
+if lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port 1420 already has a development server. Close the old Handy/Vite terminal first." >&2
+  lsof -nP -iTCP:1420 -sTCP:LISTEN >&2
+  exit 1
+fi
+
+KEY_FILE="$HOME/.config/handy/local-api-key"
+if [[ ! -s "$KEY_FILE" ]]; then
+  echo "Local API key is missing: $KEY_FILE" >&2
+  echo "Configure the local AI server before starting Handy Dev." >&2
+  exit 1
+fi
+
+BACKEND_PID=""
+cleanup() {
+  if [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo "[Handy Dev] Stopping the API launched by this session."
+    kill "$BACKEND_PID" 2>/dev/null || true
+    wait "$BACKEND_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+if lsof -nP -iTCP:8765 -sTCP:LISTEN >/dev/null 2>&1; then
+  if ! curl -fsS --max-time 8 \
+    -H "Authorization: Bearer $(cat "$KEY_FILE")" \
+    http://127.0.0.1:8765/v1/capabilities >/dev/null; then
+    echo "An API is already listening on 8765 but does not accept Handy's local key." >&2
+    echo "Stop that server or repair its HANDY_API_KEY; it was not terminated." >&2
+    exit 1
+  fi
+  echo "[Handy Dev] Reusing the authorized local AI backend on port 8765."
+else
+  mkdir -p server/data
+  bash server/scripts/run_local_mac.sh >server/data/handy-dev-backend.log 2>&1 &
+  BACKEND_PID=$!
+  echo "[Handy Dev] Starting AI backend automatically (PID $BACKEND_PID)."
+  echo "[Handy Dev] Backend log: $ROOT/server/data/handy-dev-backend.log"
+fi
+
+bun tauri dev --config src-tauri/tauri.dev.conf.json
