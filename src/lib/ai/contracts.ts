@@ -67,3 +67,33 @@ export interface AiCapabilities {
   };
   models: { asr: string; llm: string };
 }
+export interface AiModelStatus {
+  asr_model: string;
+  asr_ready: boolean;
+  asr_device: string;
+  llm_model: string;
+  llm_ready: boolean;
+}
+export interface AiCleanupRequest {
+  text: string;
+  tone?: AiTone;
+  language?: string | null;
+  protected_terms?: string[];
+}
+export interface AiCleanupResponse {
+  raw_text: string;
+  clean_text: string;
+  tone: AiTone;
+  model: string;
+  review_required: boolean;
+  warnings: string[];
+}
+export interface AiTranscriptionResponse {
+  raw_text: string;
+  clean_text: string | null;
+  language: string | null;
+  model: string;
+  segments: TranscriptSegment[];
+  cleanup: AiCleanupResponse | null;
+  elapsed_ms: number;
+}
