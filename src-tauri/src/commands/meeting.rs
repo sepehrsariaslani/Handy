@@ -15,6 +15,10 @@ const FLUSH_EVERY_SAMPLES: u64 = SAMPLE_RATE as u64 * 5;
 pub struct MeetingInfo {
     pub id: String,
     pub started_at: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub meeting_date: Option<String>,
     pub audio_path: String,
     pub bytes: u64,
     pub status: String,
@@ -50,6 +54,8 @@ pub struct MeetingInsights {
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct MeetingJob {
     pub id: String,
+    pub title: Option<String>,
+    pub meeting_date: Option<String>,
     pub status: String,
     pub stage: Option<String>,
     pub error: Option<String>,
@@ -198,7 +204,17 @@ fn get_info(path: &Path) -> Result<MeetingInfo, String> {
 pub fn start_meeting(
     app: AppHandle,
     state: State<'_, MeetingState>,
+    title: Option<String>,
+    meeting_date: Option<String>,
 ) -> Result<MeetingInfo, String> {
+    let title = title.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+    if title.as_ref().is_some_and(|s| s.chars().count() > 180) {
+        return Err("Meeting title is too long".into());
+    }
+    if let Some(ref value) = meeting_date {
+        chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map_err(|_| "Invalid meeting date (YYYY-MM-DD)")?;
+    }
     let mut active = state.active.lock().map_err(|e| e.to_string())?;
     if active.is_some() {
         return Err("A meeting is already recording".to_owned());
@@ -217,6 +233,8 @@ pub fn start_meeting(
     let mut info = MeetingInfo {
         id,
         started_at: Utc::now().to_rfc3339(),
+        title,
+        meeting_date,
         audio_path: audio_path.to_string_lossy().to_string(),
         bytes: 0,
         status: "recording".to_owned(),
@@ -468,6 +486,8 @@ pub async fn submit_meeting(
     let mut request = http.post(root.clone()).json(&serde_json::json!({
         "meeting_id": id,
         "total_bytes": audio_size,
+        "title": info.title,
+        "meeting_date": info.meeting_date,
     }));
     if let Some(key) = auth {
         request = request.bearer_auth(key);
