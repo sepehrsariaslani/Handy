@@ -49,6 +49,7 @@ def test_resume_upload_and_deduplicate(tmp_path):
     with TestClient(create_app(config, runtime)) as client:
         start = client.post("/v1/meetings/uploads", headers=AUTH, json={
             "meeting_id": "my-meeting-123", "total_bytes": len(data), "language": "fa",
+            "title": "جلسه فروش", "meeting_date": "2026-11-02",
         })
         assert start.status_code == 200
         uid = start.json()["id"]
@@ -90,6 +91,8 @@ def test_resume_upload_and_deduplicate(tmp_path):
         assert completed.status_code == 200, completed.text
         job_id = completed.json()["id"]
         assert len(job_id) == 32
+        assert completed.json()["title"] == "جلسه فروش"
+        assert completed.json()["meeting_date"] == "2026-11-02"
         again = client.post(
             "/v1/meetings/uploads/" + uid + "/finish", headers=AUTH
         )
