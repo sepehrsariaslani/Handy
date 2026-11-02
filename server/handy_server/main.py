@@ -4,6 +4,7 @@ Phase 3 adds resumable WebSocket PCM streaming while keeping the
 non-streaming API and local desktop recording path intact.
 """
 from contextlib import asynccontextmanager
+import asyncio
 import hmac
 from pathlib import Path
 import tempfile
@@ -26,6 +27,10 @@ from .schemas import (
     TranscriptionResponse,
 )
 from .store import SessionStore
+from .meeting_store import MeetingStore
+from .meeting_api import attach_meeting_routes
+from .meeting_processing import MeetingProcessor
+from .diarization import Diarizer
 from .streaming import attach_stream_routes
 from .workers import InferenceRuntime, WorkerFailure, WorkerUnavailable
 
@@ -42,18 +47,30 @@ def create_app(
         raise ValueError("API key must contain at least 24 characters")
     store = SessionStore(Path(config.db_path))
     models = runtime or InferenceRuntime(config)
+    meeting_store = MeetingStore(Path(config.db_path))
+    diarizer = Diarizer(config.diarization_enabled, config.hf_token, config.diarization_max_hours)
+    processor = MeetingProcessor(meeting_store, models, diarizer)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Do not download/load a GPU model at module import time.
-        import asyncio
         await asyncio.to_thread(models.initialize)
-        yield
+        await asyncio.to_thread(diarizer.initialize)
+        task = asyncio.create_task(processor.serve(), name="meeting-worker")
+        try:
+            yield
+        finally:
+            processor.stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     app = FastAPI(
         title="Handy AI API",
-        version="0.3.0",
-        description="Whisper Large V3 + Qwen3.5-9B, resumable PCM stream",
+        version="0.5.0",
+        description="Whisper + Qwen, streaming and durable meeting analysis",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -88,7 +105,7 @@ def create_app(
             processing={
                 "asr": await models.asr_ready(),
                 "llm": await models.llm_ready(),
-                "speaker_diarization": False,
+                "speaker_diarization": diarizer.ready,
                 "streaming": await models.asr_ready(),
             }
         )
@@ -189,19 +206,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Session not found")
         raise HTTPException(status_code=501, detail="Streaming inference is planned for phase 3")
 
-    @app.post("/v1/meetings", dependencies=protected)
-    def submit_meeting() -> None:
-        raise HTTPException(status_code=501, detail="Meeting processing is planned for phase 5")
-
-    @app.get("/v1/meetings/{job_id}", dependencies=protected)
-    def get_meeting_job(job_id: str) -> None:
-        raise HTTPException(status_code=501, detail="Meeting workers are not configured")
-
-    @app.post("/v1/meetings/{job_id}/retry", dependencies=protected)
-    def retry_meeting_job(job_id: str) -> None:
-        raise HTTPException(status_code=501, detail="Meeting workers are not configured")
-
     attach_stream_routes(app, config, store, models, require_auth)
+    attach_meeting_routes(app, config, meeting_store, processor, require_auth)
     return app
 
 

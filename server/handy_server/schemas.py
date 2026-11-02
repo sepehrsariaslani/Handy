@@ -134,3 +134,23 @@ class TranscriptionResponse(StrictModel):
     segments: list[TranscriptSegment]
     cleanup: CleanupResponse | None = None
     elapsed_ms: int = Field(ge=0)
+
+
+class MeetingUtterance(StrictModel):
+    id: str
+    speaker: str = "Unknown"
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    text: str
+
+
+class MeetingJob(StrictModel):
+    id: str
+    status: Literal["queued", "processing", "completed", "failed"]
+    stage: str | None = None
+    error: str | None = None
+    duration: float = Field(ge=0)
+    processed_seconds: float = Field(ge=0)
+    transcript_count: int = Field(ge=0)
+    transcript: list[MeetingUtterance] | None = None
+    insights: MeetingAnalysis | None = None

@@ -47,6 +47,11 @@ class Settings:
     qwen_api_key: str = "EMPTY"
     max_audio_bytes: int = 25 * 1024 * 1024
     max_text_chars: int = 12000
+    max_meeting_bytes: int = 2_400_000_000
+    max_meeting_seconds: int = 20 * 3600
+    diarization_enabled: bool = False
+    hf_token: str | None = None
+    diarization_max_hours: float = 2.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -78,6 +83,11 @@ class Settings:
             qwen_api_key=os.getenv("HANDY_QWEN_API_KEY", "EMPTY"),
             max_audio_bytes=max_audio_bytes,
             max_text_chars=int(os.getenv("HANDY_MAX_TEXT_CHARS", "12000")),
+            max_meeting_bytes=int(os.getenv("HANDY_MAX_MEETING_BYTES", "2400000000")),
+            max_meeting_seconds=int(os.getenv("HANDY_MAX_MEETING_SECONDS", "72000")),
+            diarization_enabled=enabled("HANDY_DIARIZATION_ENABLED"),
+            hf_token=os.getenv("HANDY_HF_TOKEN") or None,
+            diarization_max_hours=float(os.getenv("HANDY_DIARIZATION_MAX_HOURS", "2")),
         )
         if settings.asr_model != "large-v3":
             raise ValueError("Phase 2 ASR is pinned to Whisper large-v3")
@@ -85,5 +95,11 @@ class Settings:
             raise ValueError("Invalid HANDY_ASR_DEVICE")
         if settings.max_text_chars < 100 or settings.max_text_chars > 50000:
             raise ValueError("Invalid HANDY_MAX_TEXT_CHARS")
+        if not 1 <= settings.max_meeting_seconds <= 20 * 3600:
+            raise ValueError('Invalid meeting duration limit')
+        if not 1024 <= settings.max_meeting_bytes <= 3_000_000_000:
+            raise ValueError('Invalid meeting byte limit')
+        if not 0.1 <= settings.diarization_max_hours <= 20:
+            raise ValueError('Invalid diarization hour cap')
         validate_llm_url(settings.qwen_base_url)
         return settings
