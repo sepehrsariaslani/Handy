@@ -125,7 +125,7 @@ class MeetingStore:
                     "SELECT text FROM meeting_segments WHERE job_id=? AND id=?",
                     (job_id, original_id),
                 ).fetchone()
-                if not original or " ".join(p["text"] for p in parts) != original["text"]:
+                if not original or " ".join(p["text"] for p in parts) != " ".join(original["text"].split()):
                     raise ValueError("Aligned words must preserve every original token")
                 db.execute("DELETE FROM meeting_segments WHERE job_id=? AND id=?",
                            (job_id, original_id))
