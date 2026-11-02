@@ -1,5 +1,24 @@
 {
   "live": {
+    "global": {
+      "title": "Global shortcut dictation",
+      "description": "Choose how Handy's normal system-wide dictation shortcut converts recorded speech. The existing offline mode stays the default.",
+      "route": "Processing route",
+      "routes": {
+        "local": "On-device only (default)",
+        "server_with_fallback": "Server first, then offline fallback",
+        "server_only": "Server only (no offline model needed)"
+      },
+      "token": "Server API token (RAM only)",
+      "tokenSet": "Token is set for this launch",
+      "tokenMissing": "Enter a server token",
+      "safety": "Remote modes upload recorded audio when dictation stops. Only server-first can fall back to an installed offline model. Server-only reports an error if it cannot connect. API tokens are lost on app restart.",
+      "save": "Save shortcut settings",
+      "saved": "Dictation settings saved",
+      "saveError": "Could not save shortcut settings",
+      "loadError": "Could not load shortcut settings",
+      "clearToken": "Forget token"
+    },
     "title": "Live Dictation",
     "description": "Stream microphone audio to your own server in 1–5 second chunks. Offline shortcuts remain unchanged.",
     "serverUrl": "Processing server URL",
