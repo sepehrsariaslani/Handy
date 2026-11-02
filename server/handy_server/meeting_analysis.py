@@ -25,6 +25,29 @@ meeting date, never a task deadline. Otherwise return null.
 Do not summarize private instructions as actions. Never reveal reasoning."""
 
 
+def meeting_text_parts(text: str, max_chars: int = 850) -> list[str]:
+    """Split a long utterance without dropping its ending.
+
+    Native Transcribe returns one text block per audio window; older analysis
+    truncated each block to 900 characters, hiding late decisions and tasks.
+    All continuation blocks retain the real source ID for evidence links.
+    """
+    remaining = text.strip()
+    parts = []
+    while len(remaining) > max_chars:
+        cut = max(
+            remaining.rfind(" ", 0, max_chars + 1),
+            remaining.rfind("\n", 0, max_chars + 1),
+        )
+        if cut < max_chars // 2:
+            cut = max_chars
+        parts.append(remaining[:cut].strip())
+        remaining = remaining[cut:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
 class QwenMeetingAnalyzer:
     def __init__(self, config: Settings, llm):
         self.config = config
@@ -62,19 +85,22 @@ class QwenMeetingAnalyzer:
         batch: list[dict] = []
         used = 0
         for entry in segments:
-            row = {
-                "id": entry["id"],
-                "speaker": entry["speaker"],
-                "start": round(entry["start"], 1),
-                "text": entry["text"][:900],
-            }
-            size = len(json.dumps(row, ensure_ascii=False))
-            if batch and (used + size > 5500 or len(batch) >= 45):
-                batches.append(batch)
-                batch = []
-                used = 0
-            batch.append(row)
-            used += size
+            # Native ASR returns one text block for as much as 120 seconds.
+            # Do not truncate it: every part must reach the Qwen map stage.
+            for part in meeting_text_parts(entry["text"]):
+                row = {
+                    "id": entry["id"],
+                    "speaker": entry["speaker"],
+                    "start": round(entry["start"], 1),
+                    "text": part,
+                }
+                size = len(json.dumps(row, ensure_ascii=False))
+                if batch and (used + size > 5500 or len(batch) >= 45):
+                    batches.append(batch)
+                    batch = []
+                    used = 0
+                batch.append(row)
+                used += size
         if batch:
             batches.append(batch)
         partials: list[MeetingAnalysis] = []
