@@ -68,6 +68,8 @@ pub struct MeetingJob {
     #[serde(default)]
     pub kind: Option<String>,
     #[serde(default)]
+    pub asr_model_id: Option<String>,
+    #[serde(default)]
     pub generated_note_id: Option<String>,
     #[serde(default)]
     pub clean_text: Option<String>,
