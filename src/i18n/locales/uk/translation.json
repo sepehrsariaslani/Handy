@@ -1,4 +1,43 @@
 {
+  "live": {
+    "title": "Live Dictation",
+    "description": "Stream microphone audio to your own server in 1–5 second chunks. Offline shortcuts remain unchanged.",
+    "serverUrl": "Processing server URL",
+    "apiKey": "API token (kept in memory only)",
+    "language": "Language code (fa / en / auto)",
+    "tone": "Writing style",
+    "tones": {
+      "verbatim": "Verbatim",
+      "professional": "Professional",
+      "formal": "Formal",
+      "casual": "Casual",
+      "friendly": "Friendly"
+    },
+    "cleanup": "Clean up finalized text with Qwen when available",
+    "consent": "I have permission to record all participants and agree to transmit microphone audio to this server.",
+    "resumeNotice": "An unfinished session is saved on this device. Resume it or start a new session.",
+    "resume": "Resume session",
+    "start": "Start live dictation",
+    "stop": "Stop and finish",
+    "newSession": "New session",
+    "status": "Status",
+    "states": {
+      "idle": "Idle",
+      "recording": "Recording",
+      "reconnecting": "Reconnecting",
+      "draining": "Processing queued audio",
+      "completed": "Complete"
+    },
+    "offlineNotice": "Unconfirmed audio is kept locally in IndexedDB and retried after disconnection. Do not clear app data before the session finishes.",
+    "transcript": "Live transcript",
+    "copy": "Copy text",
+    "copied": "Copied",
+    "copyError": "Clipboard access failed",
+    "empty": "No text yet",
+    "review": "Partial text can change. Review names, numbers and commitments.",
+    "streamError": "Live processing error",
+    "startError": "Could not start microphone or session"
+  },
   "meeting": {
     "title": "Meeting Mode",
     "intro": "Record meetings separately from dictation, then optionally send audio to your own processing server.",
@@ -48,6 +87,7 @@
     "secureInputWarning": "⚠ Комбінації клавіш заблоковано Secure Input"
   },
   "sidebar": {
+    "live": "Live",
     "meeting": "Meeting",
     "general": "Загальні",
     "models": "Моделі",
