@@ -2,7 +2,7 @@
 import asyncio
 import json
 import os
-import re
+import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
@@ -139,12 +139,16 @@ class GgufWhisperWorker:
             if self.settings.gguf_model_path is None:
                 raise WorkerUnavailable("Default GGUF model is not configured")
             return self.settings.gguf_model_path
-        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", model_id) or ".." in model_id:
+        # This identifier is a catalog ID, commonly
+        # "handy-computer/repo-name/quantization.gguf". Never insert it into a
+        # path directly. Rust registers the same SHA-256 filename on record.
+        if not isinstance(model_id, str) or not 1 <= len(model_id) <= 512:
             raise WorkerUnavailable("Invalid selected ASR model ID")
         directory = self.settings.gguf_model_dir
         if directory is None:
             raise WorkerUnavailable("This server does not support local model switching")
-        target = directory / f"{model_id}.gguf"
+        safe_name = "asr-" + hashlib.sha256(model_id.encode("utf-8")).hexdigest() + ".gguf"
+        target = directory / safe_name
         if not target.is_file():
             raise WorkerUnavailable(
                 f"Selected model '{model_id}' is not registered on the local server"
@@ -155,7 +159,8 @@ class GgufWhisperWorker:
                  timeout: int = 300, model_id: str | None = None
                  ) -> tuple[list[TranscriptSegment], str | None]:
         selected = self.selected_path(model_id)
-        is_qwen_asr = "qwen3-asr" in selected.name.lower()
+        # The registry filename is opaque; model family comes from catalog ID.
+        is_qwen_asr = "qwen3-asr" in (model_id or selected.name).lower()
         with tempfile.TemporaryDirectory(prefix="handy-gguf-batch-") as temp:
             inputs = Path(temp) / "audio.list"
             inputs.write_text(str(audio_path.resolve()) + "\n", encoding="utf-8")
