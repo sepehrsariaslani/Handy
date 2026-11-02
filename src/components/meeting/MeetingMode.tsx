@@ -766,7 +766,7 @@ export const MeetingMode = () => {
               )}
             </div>
           )}
-          {job?.status === "completed" && job.clean_text && (
+          {job?.clean_text && (
             <section className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">
                 {t("meeting.polishedTranscript", {
