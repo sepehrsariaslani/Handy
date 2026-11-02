@@ -673,7 +673,7 @@ export const MeetingMode = () => {
                 {displayDate} · {selected.status}
               </p>
               {selected.asr_model_id && (
-                <p className="text-xs text-ink-3 mt-1">ASR: {selected.asr_model_id}</p>
+                <p className="text-xs text-ink-3 mt-1">{t("meeting.asrModel", { defaultValue: "ASR model" })}: {selected.asr_model_id}</p>
               )}
             </div>
           )}
