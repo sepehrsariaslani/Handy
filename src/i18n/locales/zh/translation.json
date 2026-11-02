@@ -21,6 +21,8 @@
     "resume": "View processing/results",
     "showMore": "Show more transcript",
     "retry": "Retry processing",
+    "recover": "Recover partial audio",
+    "recoverConfirm": "Use the recoverable portion of this audio? Some words may be missing. The original WAV will be preserved.",
     "speakerNames": "Speaker labels (optional)",
     "speakerPlaceholder": "Name this speaker",
     "results": "Meeting results",
