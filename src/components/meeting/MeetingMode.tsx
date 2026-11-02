@@ -24,6 +24,7 @@ import { HandyAiClient } from "@/lib/ai/client";
 type MeetingInfo = {
   id: string;
   kind?: "meeting" | "note";
+  asr_model_id?: string | null;
   started_at: string;
   title: string | null;
   meeting_date: string | null;
@@ -55,6 +56,7 @@ type Insights = {
 type MeetingJob = {
   id: string;
   clean_text?: string | null;
+  asr_model_id?: string | null;
   title?: string | null;
   meeting_date?: string | null;
   status: "queued" | "processing" | "completed" | "failed";
@@ -670,6 +672,9 @@ export const MeetingMode = () => {
               <p className="text-xs text-ink-3 mt-1">
                 {displayDate} · {selected.status}
               </p>
+              {selected.asr_model_id && (
+                <p className="text-xs text-ink-3 mt-1">ASR: {selected.asr_model_id}</p>
+              )}
             </div>
           )}
           {(!selected || recording) && (
