@@ -65,7 +65,8 @@ class WhisperWorker:
                     language=language or None,
                     beam_size=5,
                     vad_filter=True,
-                    # Keep context across Whisper\u2019s internal windows for connected speech.\n                    condition_on_previous_text=True,
+                    # Keep context across Whisper's internal windows for connected speech.
+                    condition_on_previous_text=True,
                 )
                 # Iterating the generator must occur under the lock.
                 entries = [
