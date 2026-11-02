@@ -29,6 +29,7 @@ from .schemas import (
 from .store import SessionStore
 from .meeting_store import MeetingStore
 from .meeting_api import attach_meeting_routes
+from .upload_api import attach_upload_routes
 from .meeting_processing import MeetingProcessor
 from .diarization import Diarizer
 from .streaming import attach_stream_routes
@@ -208,6 +209,7 @@ def create_app(
 
     attach_stream_routes(app, config, store, models, require_auth)
     attach_meeting_routes(app, config, meeting_store, processor, require_auth)
+    attach_upload_routes(app, config, meeting_store, require_auth)
     return app
 
 
