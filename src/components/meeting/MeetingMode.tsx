@@ -19,6 +19,7 @@ import {
   saveServerUrl,
 } from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
+import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { HandyAiClient } from "@/lib/ai/client";
 
 type MeetingInfo = {
@@ -392,6 +393,8 @@ export const MeetingMode = () => {
         </h1>
         <p className="text-sm text-ink-3 mt-2">{t("meeting.intro")}</p>
       </div>
+
+      {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
       <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold">{t("meeting.recording")}</h2>
