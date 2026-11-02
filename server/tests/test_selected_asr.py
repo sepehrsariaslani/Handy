@@ -1,5 +1,6 @@
 """Selected desktop GGUF model is pinned per Note/Meeting, never guessed or silently replaced."""
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,14 @@ from handy_server.config import Settings
 from handy_server.main import create_app
 from handy_server.schemas import TranscriptSegment
 from handy_server.workers import GgufWhisperWorker, InferenceRuntime
+
+QWEN_ID = "handy-computer/qwen3-asr-1.7b-gguf/qwen3-asr-1.7b-Q5_K_M.gguf"
+WHISPER_ID = "handy-computer/whisper-large-v3-gguf/whisper-large-v3-Q5_K_M.gguf"
+
+
+def registry_name(model_id):
+    return "asr-" + hashlib.sha256(model_id.encode("utf-8")).hexdigest() + ".gguf"
+
 
 TOKEN = "test-only-token-not-for-production-1234567890"
 AUTH = {"Authorization": "Bearer " + TOKEN}
@@ -33,7 +42,8 @@ def setup(tmp_path):
     directory.mkdir()
     source = tmp_path / "downloaded-qwen3-asr-1.7b.gguf"
     source.write_bytes(b"model placeholder")
-    (directory / "qwen3-asr-1.7b.gguf").symlink_to(source)
+    (directory / registry_name(QWEN_ID)).symlink_to(source)
+    (directory / registry_name(WHISPER_ID)).symlink_to(source)
     default = tmp_path / "whisper-large-v3.gguf"
     default.write_bytes(b"default model placeholder")
     executable = tmp_path / "transcribe-cli"
@@ -71,7 +81,7 @@ def test_selected_model_survives_upload_and_reaches_asr(tmp_path):
             "meeting_id": "qwen-session",
             "kind": "note",
             "language": "fa",
-            "asr_model_id": "qwen3-asr-1.7b",
+            "asr_model_id": QWEN_ID,
             "total_bytes": len(data),
         })
         assert begin.status_code == 200, begin.text
@@ -84,8 +94,8 @@ def test_selected_model_survives_upload_and_reaches_asr(tmp_path):
         assert response.status_code == 200, response.text
         from test_meetings import wait_for
         completed = wait_for(client, response.json()["id"], "completed")
-        assert completed["asr_model_id"] == "qwen3-asr-1.7b"
-        assert ("qwen3-asr-1.7b", "fa") in asr.calls
+        assert completed["asr_model_id"] == QWEN_ID
+        assert (QWEN_ID, "fa") in asr.calls
         assert completed["generated_note_id"] is not None
         assert completed["clean_text"] == "جلسه فارسی"
 
@@ -128,7 +138,7 @@ def test_qwen3_asr_has_text_without_timestamps_and_uses_auto_language(tmp_path, 
     monkeypatch.setattr("handy_server.workers.subprocess.run", mock_run)
     asr = GgufWhisperWorker(settings)
     asr._ready = True
-    segments, _ = asr.transcribe_file(audio, "fa", model_id="qwen3-asr-1.7b")
+    segments, _ = asr.transcribe_file(audio, "fa", model_id=QWEN_ID)
     assert "--language" not in command_used
     assert command_used[command_used.index("--timestamps") + 1] == "none"
     assert segments[0].raw_text == "سلام، قرار جلسه فردا است."
@@ -147,3 +157,45 @@ def test_selected_model_requires_gguf_runtime(tmp_path):
     import pytest
     with pytest.raises(WorkerUnavailable):
         runtime.validate_asr_model("qwen3-asr-1.7b")
+
+
+def test_whisper_catalog_id_with_slashes_is_valid_and_keeps_language(tmp_path, monkeypatch):
+    settings = setup(tmp_path)
+    audio = tmp_path / "voice.wav"
+    audio.write_bytes(wav())
+    command_used = []
+
+    def mock_run(command, **kwargs):
+        command_used.extend(command)
+        return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+            "file": str(audio),
+            "text": "جلسه فردا",
+            "segments": [{"text": "جلسه فردا", "t0_ms": 0, "t1_ms": 1500}],
+        }))
+
+    monkeypatch.setattr("handy_server.workers.subprocess.run", mock_run)
+    asr = GgufWhisperWorker(settings)
+    asr._ready = True
+    assert asr.selected_path(WHISPER_ID).name == registry_name(WHISPER_ID)
+    segments, language = asr.transcribe_file(audio, "fa", model_id=WHISPER_ID)
+    assert language == "fa"
+    assert segments[0].raw_text == "جلسه فردا"
+    assert command_used[command_used.index("--language") + 1] == "fa"
+    assert command_used[command_used.index("--timestamps") + 1] == "segment"
+    assert command_used[command_used.index("-m") + 1] == str(
+        settings.gguf_model_dir / registry_name(WHISPER_ID)
+    )
+
+
+def test_slash_ids_cannot_escape_local_asr_registry(tmp_path):
+    settings = setup(tmp_path)
+    asr = GgufWhisperWorker(settings)
+    from handy_server.workers import WorkerUnavailable
+    import pytest
+
+    for candidate in ("../etc/passwd", "/tmp/something", "repo/../../file.gguf"):
+        with pytest.raises(WorkerUnavailable):
+            asr.selected_path(candidate)
+    assert asr.selected_path(WHISPER_ID).is_file()
+    assert asr.selected_path(QWEN_ID).is_file()
+    assert registry_name(WHISPER_ID) != registry_name(QWEN_ID)
