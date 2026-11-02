@@ -245,7 +245,13 @@ export const MeetingMode = () => {
   };
 
   const importAsTasks = async () => {
-    if (!job || job.status !== "completed" || !job.insights || !authToken || busy)
+    if (
+      !job ||
+      job.status !== "completed" ||
+      !job.insights ||
+      !authToken ||
+      busy
+    )
       return;
     setBusy(true);
     try {
