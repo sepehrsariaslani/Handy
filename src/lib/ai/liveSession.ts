@@ -131,6 +131,7 @@ type Callbacks = {
   result: (result: LiveResult) => void;
   partial: (text: string) => void;
   error: (message: string) => void;
+  level?: (value: number) => void;
 };
 
 export class LiveStreamSession {
@@ -205,7 +206,10 @@ export class LiveStreamSession {
       );
     }
     this.connect();
-    const capture = new LiveAudioCapture((audio) => this.enqueue(audio));
+    const capture = new LiveAudioCapture(
+      (audio) => this.enqueue(audio),
+      (level) => this.callbacks.level?.(level),
+    );
     this.capture = capture;
     try {
       await capture.start();
