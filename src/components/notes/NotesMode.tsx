@@ -376,24 +376,24 @@ export function NotesMode() {
 
       {!editorExpanded && (
         <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
-        <label className="flex-1 min-w-40 flex flex-col gap-1 text-sm">
-          {t("notes.meetingId")}
-          <input
-            className="border border-line bg-transparent rounded-lg px-3 py-2"
-            value={meetingId}
-            maxLength={32}
-            placeholder={t("notes.meetingPlaceholder")}
-            onChange={(event) => setMeetingId(event.target.value.trim())}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={!client || busy || !/^[0-9a-f]{32}$/.test(meetingId)}
-          onClick={() => void importMeeting()}
-          className="rounded-lg border border-line px-3 py-2 flex gap-2 items-center disabled:opacity-50 text-sm"
-        >
-          <Link2 size={16} /> {t("notes.importMeeting")}
-        </button>
+          <label className="flex-1 min-w-40 flex flex-col gap-1 text-sm">
+            {t("notes.meetingId")}
+            <input
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              value={meetingId}
+              maxLength={32}
+              placeholder={t("notes.meetingPlaceholder")}
+              onChange={(event) => setMeetingId(event.target.value.trim())}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!client || busy || !/^[0-9a-f]{32}$/.test(meetingId)}
+            onClick={() => void importMeeting()}
+            className="rounded-lg border border-line px-3 py-2 flex gap-2 items-center disabled:opacity-50 text-sm"
+          >
+            <Link2 size={16} /> {t("notes.importMeeting")}
+          </button>
         </section>
       )}
 
@@ -406,72 +406,72 @@ export function NotesMode() {
       >
         {!editorExpanded && (
           <section className="rounded-xl border border-line p-3 flex flex-col gap-3">
-          <div className="flex gap-2 items-center">
-            <Search size={17} className="text-ink-3" />
-            <input
-              className="min-w-0 flex-1 border border-line bg-transparent rounded-lg px-2 py-2 text-sm"
-              placeholder={t("notes.search")}
-              value={search}
-              maxLength={160}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={newNote}
-            disabled={liveBusy}
-            className="flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
-          >
-            <Plus size={16} /> {t("notes.new")}
-          </button>
-          <div className="max-h-[420px] overflow-y-auto flex flex-col gap-1">
-            {items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={busy || liveBusy}
-                onClick={() => void select(item.id)}
-                className={
-                  "text-start rounded-lg p-3 hover:bg-line " +
-                  (note?.id === item.id ? "bg-line" : "")
-                }
-              >
-                <span className="block font-medium text-sm truncate">
-                  {item.title}
-                </span>
-                <span className="block text-xs text-ink-3 mt-1 line-clamp-2">
-                  {item.preview}
-                </span>
-              </button>
-            ))}
-            {!items.length && (
-              <p className="text-xs text-ink-3 p-2">
-                {loading ? t("notes.loading") : t("notes.empty")}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center justify-between text-xs text-ink-3">
-            <span>{t("notes.count", { count: total })}</span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-              >
-                {t("notes.previous")}
-              </button>
-              <button
-                type="button"
-                disabled={(page + 1) * 25 >= total}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                {t("notes.next")}
-              </button>
+            <div className="flex gap-2 items-center">
+              <Search size={17} className="text-ink-3" />
+              <input
+                className="min-w-0 flex-1 border border-line bg-transparent rounded-lg px-2 py-2 text-sm"
+                placeholder={t("notes.search")}
+                value={search}
+                maxLength={160}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(0);
+                }}
+              />
             </div>
-          </div>
+            <button
+              type="button"
+              onClick={newNote}
+              disabled={liveBusy}
+              className="flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
+            >
+              <Plus size={16} /> {t("notes.new")}
+            </button>
+            <div className="max-h-[420px] overflow-y-auto flex flex-col gap-1">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={busy || liveBusy}
+                  onClick={() => void select(item.id)}
+                  className={
+                    "text-start rounded-lg p-3 hover:bg-line " +
+                    (note?.id === item.id ? "bg-line" : "")
+                  }
+                >
+                  <span className="block font-medium text-sm truncate">
+                    {item.title}
+                  </span>
+                  <span className="block text-xs text-ink-3 mt-1 line-clamp-2">
+                    {item.preview}
+                  </span>
+                </button>
+              ))}
+              {!items.length && (
+                <p className="text-xs text-ink-3 p-2">
+                  {loading ? t("notes.loading") : t("notes.empty")}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-between text-xs text-ink-3">
+              <span>{t("notes.count", { count: total })}</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  {t("notes.previous")}
+                </button>
+                <button
+                  type="button"
+                  disabled={(page + 1) * 25 >= total}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  {t("notes.next")}
+                </button>
+              </div>
+            </div>
           </section>
         )}
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
