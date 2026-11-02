@@ -1,45 +1,119 @@
-# Handy AI Server — Phase 1
+# Handy AI Server — Phase 2
 
-This is a **functional, authenticated API foundation**, not yet an ASR/LLM server. The three session modes are defined and persisted in SQLite; inference/upload/streaming endpoints explicitly return HTTP 501 until their workers are implemented. Nothing is silently sent to a cloud provider.
+Handy now has an authenticated non-streaming transcription API backed by
+**Whisper Large V3** (faster-whisper/CTranslate2), plus a text cleanup API
+backed by **Qwen3.5-9B** through a private OpenAI-compatible vLLM server.
 
-## Development
+The existing desktop **offline dictation remains the default** until
+incremental streaming is built in phase 3. Full meeting analysis and notes are
+not part of phase 2. Both workers are **disabled by default** and readiness
+reflects actual model availability, not a fake success.
 
-Python 3.11+:
+## Install API and Whisper on a GPU host
+
+Requirements: Python 3.11+, GPU and current NVIDIA driver, CUDA 12 and
+cuDNN 9 (or set CPU fallback). From the repository root:
 
 ```bash
 cd server
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[dev,asr]'
 export HANDY_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-export HANDY_DB_PATH=./data/handy.sqlite3
+export HANDY_ASR_ENABLED=true
+export HANDY_ASR_DEVICE=cuda
+export HANDY_ASR_COMPUTE_TYPE=float16
+```
+
+The model will download and load on startup. On CPU, choose
+`HANDY_ASR_DEVICE=cpu` and `HANDY_ASR_COMPUTE_TYPE=int8`;
+large-v3 on CPU can be very slow.
+
+## Install Qwen3.5-9B separately
+
+Use a vLLM version supporting Qwen3.5, ideally following the model's official
+installation recipe. In a **separate environment** install vLLM, then run:
+
+```bash
+cd server
+bash scripts/run_qwen.sh
+```
+
+The Qwen server listens only on `127.0.0.1:8000`. On the Handy API terminal:
+
+```bash
+export HANDY_LLM_ENABLED=true
+export HANDY_QWEN_BASE_URL=http://127.0.0.1:8000/v1
+export HANDY_QWEN_MODEL=Qwen/Qwen3.5-9B
 uvicorn handy_server.main:app --host 127.0.0.1 --port 8765
 ```
 
-For Windows use `.venv\Scripts\activate`. Connect the existing Handy Meeting Mode server field to `http://127.0.0.1:8765` and provide the same API token. Remote hosts **must** use HTTPS (TLS proxy); never publish Uvicorn's plain HTTP port to the internet.
+Running both models on one 24 GB GPU may fail due to VRAM limits.
+Use separate GPUs or hosts for production, or size and benchmark the models.
 
-Check readiness and API contract:
+An optional `Dockerfile.gpu` is included for the Handy API/Whisper service.
+It requires NVIDIA Container Toolkit and an explicit private network path to
+the Qwen service. The Qwen host-loopback address is not reachable inside an
+ordinary Docker container; configure `HANDY_QWEN_BASE_URL` appropriately.
+
+## Endpoints
+
+- `GET /health` — liveness only.
+- `GET /v1/capabilities` — authenticated actual model readiness.
+- `GET /v1/models/status` — Whisper/Qwen state and model names.
+- `POST /v1/text/cleanup` — JSON with `text`, `tone` (verbatim,
+  professional, formal, casual, friendly), `language` and
+  `protected_terms`. Returns raw and clean variants.
+- `POST /v1/transcriptions` — multipart short audio plus optional
+  `language`, `cleanup` and `tone`. Returns timestamps and clean text.
+- `POST /v1/sessions` and `GET /v1/sessions/{id}` — session metadata
+  retained from phase 1.
+- Streaming audio chunks and full meeting jobs continue to return HTTP
+  501 until their later phases.
+
+Only WAV, MP3, FLAC, M4A, OGG, WEBM and MP4 are accepted. Default upload
+limit is 25 MiB. This endpoint is for short files, **not a 20-hour recording**.
+
+## Verify using real models
 
 ```bash
-curl http://127.0.0.1:8765/health
-curl -H "Authorization: Bearer $HANDY_API_KEY" http://127.0.0.1:8765/v1/capabilities
+curl -H "Authorization: Bearer $HANDY_API_KEY" \
+  http://127.0.0.1:8765/v1/models/status
+
+curl -X POST http://127.0.0.1:8765/v1/text/cleanup \
+  -H "Authorization: Bearer $HANDY_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"خب هزینه ۱۵۰۰ تومان شد.","tone":"formal","language":"fa"}'
+
+curl -X POST http://127.0.0.1:8765/v1/transcriptions \
+  -H "Authorization: Bearer $HANDY_API_KEY" \
+  -F "audio=@/path/to/test.wav" -F "language=fa" \
+  -F "cleanup=true" -F "tone=professional"
+
+python scripts/smoke_models.py --audio /path/to/test.wav --language fa
 ```
 
-`/health` only checks HTTP availability. `/v1/capabilities.processing` is the source of truth for readiness; all workers are false in phase 1.
+Use a recording whose participants consented to processing.
 
-Run tests and synthetic API overhead measurement:
+## Safety and deployment constraints
+
+- A shared bearer API key is **single-tenant only**. Before public deployment
+  add accounts, per-user authorization, quotas, HTTPS, upload body limits
+  at the reverse proxy, rate limits and retention policies.
+- Only localhost HTTP is allowed in desktop settings; remote endpoints
+  must be HTTPS. Keep vLLM private; never expose its port publicly.
+- Audio uploads go to a bounded temporary file and are deleted after
+  inference; the server does not save the audio or transcript.
+- Raw transcript is always retained in API output. Numeric differences and
+  lost explicitly protected terms cause safe fallback to raw text. This
+  is not proof of complete semantic accuracy; users should review edits.
+- CI uses mock workers and does **not** download multi-GB models or
+  prove real GPU performance. See `docs/ai-phase2-architecture.md`.
+
+## Tests and synthetic benchmark
 
 ```bash
+pip install -e '.[dev]'
 pytest -q
 python benchmarks/measure_api.py
 ```
-
-### Security and operational boundaries
-
-- Required API token, constant-time comparison, no wildcard CORS; `HANDY_CORS_ORIGINS` must explicitly include the production web frontend origin.
-- Token in the desktop Meeting UI is volatile/in-memory; only non-secret server URL is saved locally.
-- SQLite stores **session metadata only**. No recording, transcript or task is uploaded/persisted by this server yet.
-- This is a single-tenant prototype. Before multi-user/public deployment, add per-user identities, authorization, quotas, durable job workers, encrypted object storage, retention and deletion policies.
-- Do not send multi-hour recordings to the phase-1 stub; server endpoints deliberately return 501.
-
-See `docs/ai-phase1-architecture.md` for the shared versioned contract and migration milestones.
