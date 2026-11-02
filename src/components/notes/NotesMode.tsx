@@ -219,12 +219,15 @@ export function NotesMode() {
     setJobId(null);
     setLiveStatus("recording");
     try {
-      const info = await invoke<{ id: string; asr_model_id?: string | null }>("start_meeting", {
-        kind: "note",
-        title: title.trim() || null,
-        meetingDate: null,
-        language: speechLanguage === "auto" ? null : speechLanguage,
-      });
+      const info = await invoke<{ id: string; asr_model_id?: string | null }>(
+        "start_meeting",
+        {
+          kind: "note",
+          title: title.trim() || null,
+          meetingDate: null,
+          language: speechLanguage === "auto" ? null : speechLanguage,
+        },
+      );
       setRecordingId(info.id);
       setRecordingModel(info.asr_model_id ?? null);
       setRecording(true);
@@ -581,7 +584,10 @@ export function NotesMode() {
               </label>
             )}
             {recording && recordingModel && (
-              <p className="text-xs text-ink-3">{t("meeting.asrModel", { defaultValue: "ASR model" })}: {recordingModel}</p>
+              <p className="text-xs text-ink-3">
+                {t("meeting.asrModel", { defaultValue: "ASR model" })}:{" "}
+                {recordingModel}
+              </p>
             )}
             {recording ? (
               <RecordingPill
