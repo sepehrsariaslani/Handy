@@ -119,7 +119,7 @@ def create_app(
         return ModelStatus(
             asr_model=config.asr_model,
             asr_ready=await models.asr_ready(),
-            asr_device=config.asr_device,
+            asr_device=(config.gguf_compute_backend if config.asr_backend == "gguf_cli" else config.asr_device),
             llm_model=config.qwen_model,
             llm_ready=await models.llm_ready(),
         )
