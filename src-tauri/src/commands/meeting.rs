@@ -6,7 +6,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const SAMPLE_RATE: u32 = 16_000;
 const FLUSH_EVERY_SAMPLES: u64 = SAMPLE_RATE as u64 * 5;
@@ -109,10 +109,13 @@ struct MeetingWavSink {
     writer: Option<hound::WavWriter<BufWriter<File>>>,
     samples_since_flush: u64,
     error: Option<String>,
+    app: AppHandle,
+    level_energy: f32,
+    level_samples: usize,
 }
 
 impl MeetingWavSink {
-    fn open(path: &Path) -> Result<Self, String> {
+    fn open(path: &Path, app: AppHandle) -> Result<Self, String> {
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate: SAMPLE_RATE,
@@ -124,6 +127,9 @@ impl MeetingWavSink {
             writer: Some(writer),
             samples_since_flush: 0,
             error: None,
+            app,
+            level_energy: 0.0,
+            level_samples: 0,
         })
     }
 
@@ -145,6 +151,14 @@ impl Sink for MeetingWavSink {
             return;
         };
         for &value in &chunk.samples[..chunk.valid_frames] {
+            self.level_energy += value * value;
+            self.level_samples += 1;
+            if self.level_samples >= 2048 {
+                let rms = (self.level_energy / self.level_samples as f32).sqrt();
+                let _ = self.app.emit("meeting-audio-level", rms.min(1.0));
+                self.level_energy = 0.0;
+                self.level_samples = 0;
+            }
             let sample = (value.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
             if let Err(error) = writer.write_sample(sample) {
                 self.error = Some(format!("Cannot write meeting audio: {error}"));
@@ -209,7 +223,7 @@ pub fn start_meeting(
         remote_job_id: None,
         remote_server_url: None,
     };
-    let sink = MeetingWavSink::open(&audio_path)?;
+    let sink = MeetingWavSink::open(&audio_path, app.clone())?;
     let settings = crate::settings::get_settings(&app);
     let requested_mic = if settings.clamshell_microphone.is_some()
         && crate::helpers::clamshell::is_clamshell().unwrap_or(false)
