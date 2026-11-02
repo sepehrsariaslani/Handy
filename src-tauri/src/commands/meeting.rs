@@ -349,6 +349,12 @@ pub fn stop_meeting(state: State<'_, MeetingState>) -> Result<MeetingInfo, Strin
         .map_err(|e| e.to_string())?
         .len();
     active.info.bytes = size;
+    log::info!(
+        "Meeting capture stopped: id={} kind={} language={} bytes={} dropped_frames={} normal_end={}",
+        active.info.id, active.info.kind,
+        active.info.language.as_deref().unwrap_or("auto"),
+        size, dropped, normal_end,
+    );
     active.info.status = if normal_end && dropped == 0 && sink_result.is_ok() {
         "ready"
     } else {
