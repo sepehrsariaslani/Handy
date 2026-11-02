@@ -205,6 +205,10 @@ class MeetingProcessor:
             else:
                 polished.append(text)
 
+        # Keep the full polished text available even if downstream insights
+        # fail (e.g. Ollama out-of-memory or an invalid JSON response).
+        await asyncio.to_thread(self.store.save_cleaned, job_id, polished)
+
         if job.get("kind", "meeting") == "note":
             # Notes are saved automatically, including after closing the UI.
             # A missing Qwen service must not lose the Whisper transcript.
