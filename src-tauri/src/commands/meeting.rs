@@ -18,6 +18,8 @@ pub struct MeetingInfo {
     pub audio_path: String,
     pub bytes: u64,
     pub status: String,
+    pub remote_job_id: Option<String>,
+    pub remote_server_url: Option<String>,
 }
 
 
