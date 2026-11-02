@@ -246,7 +246,7 @@ export function MemoryMode() {
               {t("memory.appliedPeriod")}:{" "}
               {result.applied_since ?? "…"} — {result.applied_until ?? "…"}
             </p>
-          )
+          )}
           {result.status === "answered" && result.answer ? (
             <p className="text-sm leading-7 whitespace-pre-wrap" dir="auto">
               {result.answer}
