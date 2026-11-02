@@ -174,39 +174,39 @@ export function NotesMode() {
       </header>
 
       {!LOCAL_AI_TEST_MODE && (
-      <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          {t("notes.serverUrl")}
-          <input
-            type="url"
-            className="border border-line bg-transparent rounded-lg px-3 py-2"
-            value={serverUrl}
-            onChange={(event) => {
-              setServerUrl(event.target.value);
-              setToken("");
-            }}
-            onBlur={() => {
-              try {
-                setServerUrl(saveServerUrl(serverUrl));
-              } catch (error) {
-                toast.error(message(error));
-              }
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          {t("notes.token")}
-          <input
-            type="password"
-            autoComplete="off"
-            className="border border-line bg-transparent rounded-lg px-3 py-2"
-            value={token}
-            placeholder={localApiKey ? "Local API key detected" : undefined}
-            onChange={(event) => setToken(event.target.value)}
-          />
-        </label>
-        <p className="text-xs text-ink-3">{t("notes.privacy")}</p>
-      </section>
+        <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            {t("notes.serverUrl")}
+            <input
+              type="url"
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              value={serverUrl}
+              onChange={(event) => {
+                setServerUrl(event.target.value);
+                setToken("");
+              }}
+              onBlur={() => {
+                try {
+                  setServerUrl(saveServerUrl(serverUrl));
+                } catch (error) {
+                  toast.error(message(error));
+                }
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            {t("notes.token")}
+            <input
+              type="password"
+              autoComplete="off"
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              value={token}
+              placeholder={localApiKey ? "Local API key detected" : undefined}
+              onChange={(event) => setToken(event.target.value)}
+            />
+          </label>
+          <p className="text-xs text-ink-3">{t("notes.privacy")}</p>
+        </section>
       )}
 
       <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
