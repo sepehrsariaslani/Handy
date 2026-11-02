@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 asr = ["faster-whisper>=1.1,<2"]
 diarization = ["pyannote.audio>=4,<5"]
+semantic = ["sentence-transformers>=3,<6"]
 dev = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
