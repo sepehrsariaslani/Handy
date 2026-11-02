@@ -195,10 +195,11 @@ class MeetingStore:
         job=self.get(job_id)
         if job is None:
             return None
+        cleaned = self.cleaned(job_id, limit=1)["items"]
         return {
             "id": job_id, "title": job["title"], "meeting_date": job["meeting_date"],
             "kind": job["kind"], "generated_note_id": job["generated_note_id"],
-            "clean_text": self.cleaned(job_id, limit=1)["items"][0] if self.cleaned(job_id, limit=1)["items"] else None,
+            "clean_text": cleaned[0] if cleaned else None,
             "status": job["status"], "stage": job["stage"],
             "error": job["error"], "duration": job["duration"],
             "processed_seconds": min(job["duration"], job["next_sample"]/16000),
