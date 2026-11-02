@@ -24,7 +24,14 @@ export const useModelCatalog = (languages: string[]) => {
     const map = new Map<string, ModelInfo>();
     for (const info of infos) {
       const repo = repoIdOf(info);
-      if (repo && !info.is_custom && !map.has(repo)) map.set(repo, info);
+      if (!repo || info.is_custom) continue;
+      // A catalog repo may have multiple quants on disk. Prefer a ready
+      // alternate quant (e.g. Q5_K_M) to the default downloadable Q8_0;
+      // otherwise onboarding wrongly asks to download a second copy.
+      const existing = map.get(repo);
+      if (!existing || (!existing.is_downloaded && info.is_downloaded)) {
+        map.set(repo, info);
+      }
     }
     return map;
   }, [infos]);
