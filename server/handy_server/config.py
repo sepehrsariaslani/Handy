@@ -41,6 +41,10 @@ class Settings:
     asr_model: str = "large-v3"
     asr_device: str = "cuda"
     asr_compute_type: str = "float16"
+    asr_backend: str = "faster_whisper"
+    gguf_model_path: Path | None = None
+    transcribe_cli_path: Path | None = None
+    gguf_compute_backend: str = "auto"
     llm_enabled: bool = False
     qwen_base_url: str = "http://127.0.0.1:8000/v1"
     qwen_model: str = "Qwen/Qwen3.5-9B"
@@ -80,6 +84,12 @@ class Settings:
             asr_model=os.getenv("HANDY_ASR_MODEL", "large-v3"),
             asr_device=os.getenv("HANDY_ASR_DEVICE", "cuda"),
             asr_compute_type=os.getenv("HANDY_ASR_COMPUTE_TYPE", "float16"),
+            asr_backend=os.getenv("HANDY_ASR_BACKEND", "faster_whisper").strip().lower(),
+            gguf_model_path=Path(os.environ["HANDY_GGUF_MODEL_PATH"]).expanduser()
+                if os.getenv("HANDY_GGUF_MODEL_PATH") else None,
+            transcribe_cli_path=Path(os.environ["HANDY_TRANSCRIBE_CLI_PATH"]).expanduser()
+                if os.getenv("HANDY_TRANSCRIBE_CLI_PATH") else None,
+            gguf_compute_backend=os.getenv("HANDY_GGUF_COMPUTE_BACKEND", "auto").strip().lower(),
             llm_enabled=enabled("HANDY_LLM_ENABLED"),
             qwen_base_url=os.getenv("HANDY_QWEN_BASE_URL", "http://127.0.0.1:8000/v1"),
             qwen_model=os.getenv("HANDY_QWEN_MODEL", "Qwen/Qwen3.5-9B"),
@@ -97,6 +107,13 @@ class Settings:
         )
         if settings.qwen_provider not in {"auto", "ollama", "vllm"}:
             raise ValueError("HANDY_QWEN_PROVIDER must be auto, ollama or vllm")
+        if settings.asr_backend not in {"faster_whisper", "gguf_cli"}:
+            raise ValueError("HANDY_ASR_BACKEND must be faster_whisper or gguf_cli")
+        if settings.gguf_compute_backend not in {"auto", "cpu", "metal"}:
+            raise ValueError("HANDY_GGUF_COMPUTE_BACKEND must be auto, cpu or metal")
+        if settings.asr_backend == "gguf_cli" and settings.asr_enabled:
+            if not settings.gguf_model_path or not settings.transcribe_cli_path:
+                raise ValueError("GGUF ASR requires HANDY_GGUF_MODEL_PATH and HANDY_TRANSCRIBE_CLI_PATH")
         if settings.asr_model != "large-v3":
             raise ValueError("Phase 2 ASR is pinned to Whisper large-v3")
         if settings.asr_device not in {"cuda", "cpu", "auto"}:
