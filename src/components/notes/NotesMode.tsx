@@ -581,7 +581,7 @@ export function NotesMode() {
               </label>
             )}
             {recording && recordingModel && (
-              <p className="text-xs text-ink-3">ASR: {recordingModel}</p>
+              <p className="text-xs text-ink-3">{t("meeting.asrModel", { defaultValue: "ASR model" })}: {recordingModel}</p>
             )}
             {recording ? (
               <RecordingPill
