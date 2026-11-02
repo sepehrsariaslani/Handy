@@ -99,13 +99,16 @@ def test_manual_tasks_and_optimistic_version_conflict(setup):
     assert client.get("/v1/tasks/"+item["id"],headers=AUTH).status_code==404
 
 
-def test_meeting_import_requires_explicit_action_and_is_idempotent(setup):
+def test_meeting_tasks_are_created_automatically_and_import_is_idempotent(setup):
     client,_,_,job,_=setup
-    assert client.get("/v1/tasks",headers=AUTH).json()["total"]==0
+    initial=client.get("/v1/tasks",headers=AUTH).json()
+    assert initial["total"]==1
+    assert initial["items"][0]["source_meeting_id"]==job["id"]
+    assert initial["items"][0]["source_meeting_title"]=="علی گزارش را تهیه می‌کند"
     first=client.post("/v1/tasks/from-meeting/"+job["id"],headers=AUTH)
     assert first.status_code==200,first.text
     body=first.json()
-    assert body["created"]==1
+    assert body["created"]==0
     assert len(body["tasks"])==1
     task=body["tasks"][0]
     assert task["source_quotes"][0]["text"]=="من گزارش کارگاه را تا جمعه تحویل می‌دهم"
