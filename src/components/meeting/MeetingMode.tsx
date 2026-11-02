@@ -1028,7 +1028,8 @@ export const MeetingMode = () => {
                           }
                           onBlur={() => void saveSpeakerName(speaker)}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter") event.currentTarget.blur();
+                            if (event.key === "Enter")
+                              event.currentTarget.blur();
                           }}
                           disabled={job.status !== "completed"}
                         />
@@ -1064,7 +1065,9 @@ export const MeetingMode = () => {
                           })}
                         </option>
                       </select>
-                      <span>{clock(part.start)} · {part.id}</span>
+                      <span>
+                        {clock(part.start)} · {part.id}
+                      </span>
                     </div>
                     <p className="text-sm whitespace-pre-wrap mt-1">
                       {part.text}
