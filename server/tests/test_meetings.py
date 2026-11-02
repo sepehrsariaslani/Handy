@@ -201,3 +201,29 @@ def test_meeting_length_and_speaker_alignment(tmp_path):
         ("u00000002", "SPEAKER_01"),
         ("u00000003", "Unknown"),
     ]
+
+
+def test_hierarchical_summary_retains_all_source_evidence(tmp_path):
+    """Evidence must not disappear while summaries are reduced for long meetings."""
+    import asyncio
+    from handy_server.meeting_analysis import QwenMeetingAnalyzer
+
+    settings = Settings(api_key=KEY, db_path=tmp_path / "a.db", llm_enabled=True)
+    llm = QwenWorker(settings, transport=httpx.MockTransport(handler))
+    analyzer = QwenMeetingAnalyzer(settings, llm)
+    entries = [
+        {
+            "id": f"u{i:08d}",
+            "speaker": "Unknown",
+            "start": float(i),
+            "end": float(i + 1),
+            "text": "تصمیم: علی گزارش را آماده کند.",
+        }
+        for i in range(1, 100)
+    ]
+    result = asyncio.run(analyzer.analyze(entries))
+    # At least two independent source IDs must survive a reduce stage.
+    ids = {ref for task in result.tasks for ref in task.source_ids}
+    assert len(ids) >= 2
+    assert result.summary
+    assert all(ref in {row["id"] for row in entries} for ref in ids)
