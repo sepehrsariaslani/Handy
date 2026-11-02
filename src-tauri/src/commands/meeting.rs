@@ -1,4 +1,5 @@
 use crate::managers::audio::AudioRecordingManager;
+use crate::managers::model::ModelManager;
 use chrono::Utc;
 use handy_recorder::{AudioChunk, Channels, EndReason, Recorder, RecorderConfig, Sink};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,8 @@ pub struct MeetingInfo {
     pub kind: String,
     #[serde(default)]
     pub language: Option<String>,
+    #[serde(default)]
+    pub asr_model_id: Option<String>,
     pub started_at: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -195,6 +198,67 @@ impl Sink for MeetingWavSink {
     }
 }
 
+/// Pin a downloaded model for the locally hosted Meeting/Notes ASR worker.
+///
+/// The local server reads only from the configured registry directory. The
+/// model is symlinked, never duplicated or downloaded a second time.
+/// Without the shared dev-only directory, legacy remote servers retain their
+/// existing configured ASR model; we do not claim to switch them.
+fn register_local_asr_model(app: &AppHandle) -> Result<Option<String>, String> {
+    let Some(directory) = std::env::var_os("HANDY_MEETING_MODEL_DIR") else {
+        return Ok(None);
+    };
+    let selected = crate::settings::get_settings(app).selected_model;
+    if selected.is_empty() {
+        return Err("Select and download a transcription model before recording".into());
+    }
+    if selected.len() > 120
+        || !selected
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        || selected.contains("..")
+    {
+        return Err("Selected model ID is not valid for Meeting/Notes".into());
+    }
+    let manager = app.state::<Arc<ModelManager>>();
+    let path = manager
+        .get_model_path(&selected)
+        .map_err(|e| format!("Selected transcription model is not downloaded: {e}"))?;
+    if path.extension().and_then(|s| s.to_str()) != Some("gguf") {
+        return Err(
+            "Meeting/Notes currently require a downloaded GGUF model supported by transcribe.cpp"
+                .into(),
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        let directory = PathBuf::from(directory);
+        fs::create_dir_all(&directory)
+            .map_err(|e| format!("Cannot prepare local ASR registry: {e}"))?;
+        let link = directory.join(format!("{selected}.gguf"));
+        match fs::read_link(&link) {
+            Ok(existing) if existing == path => {}
+            Ok(_) => {
+                fs::remove_file(&link).map_err(|e| e.to_string())?;
+                symlink(&path, &link).map_err(|e| e.to_string())?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                symlink(&path, &link).map_err(|e| e.to_string())?;
+            }
+            Err(error) => return Err(format!("Cannot register model: {error}")),
+        }
+        log::info!("Meeting/Notes ASR model selected: {}", selected);
+        Ok(Some(selected))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = directory;
+        let _ = path;
+        Err("Automatic Meeting/Notes model selection is not configured on this platform".into())
+    }
+}
+
 fn meeting_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(crate::portable::app_data_dir(app)
         .map_err(|e| format!("Cannot resolve app data directory: {e}"))?
@@ -247,6 +311,7 @@ pub fn start_meeting(
         Utc::now().format("%Y%m%dT%H%M%S%3f"),
         std::process::id()
     );
+    let asr_model_id = register_local_asr_model(&app)?;
     let directory = meeting_dir(&app)?.join(&id);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let audio_path = directory.join("audio.wav");
@@ -269,6 +334,7 @@ pub fn start_meeting(
         id,
         kind,
         language,
+        asr_model_id,
         started_at: Utc::now().to_rfc3339(),
         title,
         meeting_date,
@@ -558,6 +624,7 @@ pub async fn submit_meeting(
         "meeting_id": id,
         "kind": info.kind,
         "language": info.language,
+        "asr_model_id": info.asr_model_id,
         "total_bytes": audio_size,
         "title": info.title,
         "meeting_date": info.meeting_date,
