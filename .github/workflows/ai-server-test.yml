@@ -6,6 +6,7 @@ on:
       - "server/**"
       - "src/lib/ai/**"
       - "src/components/live/**"
+      - "src/components/meeting/**"
       - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
   pull_request:
@@ -13,6 +14,7 @@ on:
       - "server/**"
       - "src/lib/ai/**"
       - "src/components/live/**"
+      - "src/components/meeting/**"
       - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
 

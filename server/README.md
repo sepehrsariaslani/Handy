@@ -178,3 +178,10 @@ should use the native Rust recorder and resumable upload pipeline.
   supports only a single API process per server.
 
 Run `cd server && python -m pytest -q` for protocol regression tests.
+
+## Phase 5: Meeting Mode
+
+The server supports durable meeting jobs, 30-second windowed transcription,
+optional pyannote speaker diarization, grounded Qwen summaries and resumable
+4 MiB chunk uploads. Full operational instructions, permissions, security
+limits and API routes: [Phase 5 Meeting Mode](../docs/ai-phase5-meeting.md).
