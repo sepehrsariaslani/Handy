@@ -400,6 +400,36 @@ pub fn list_meetings(
     Ok(meetings)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn update_meeting_metadata(
+    app: AppHandle,
+    id: String,
+    title: Option<String>,
+    meeting_date: Option<String>,
+) -> Result<MeetingInfo, String> {
+    if id.is_empty() || id.len() > 80
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("Invalid meeting ID".into());
+    }
+    let directory = meeting_dir(&app)?.join(&id);
+    let mut info = get_info(&directory)?;
+    // Never replace an explicit title/date. Only fill the blanks after Qwen.
+    if info.title.is_none() {
+        info.title = title
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty() && s.chars().count() <= 180);
+    }
+    if info.meeting_date.is_none() {
+        info.meeting_date = meeting_date.filter(|s| {
+            chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+        });
+    }
+    write_info(&directory, &info)?;
+    Ok(info)
+}
+
 /// Return the existing local development API token only for the exact loopback
 /// Handy endpoint. Never expose the token for a user-supplied remote URL.
 #[tauri::command]
