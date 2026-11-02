@@ -92,7 +92,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       if (model && models.downloadState(model).state === "none")
         store.set({ downloadFailed: true });
     }
-  }, [preview, modelsInitialized, models.offered, models.picks, settings?.selected_model, store]);
+  }, [
+    preview,
+    modelsInitialized,
+    models.offered,
+    models.picks,
+    settings?.selected_model,
+    store,
+  ]);
 
   // Select the picked model as soon as it's on disk, so Try it can use it.
   const downloaded = models.offered.find((m) => m.id === store.downloadId);
