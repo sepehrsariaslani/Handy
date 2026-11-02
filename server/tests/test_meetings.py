@@ -231,3 +231,33 @@ def test_hierarchical_summary_retains_all_source_evidence(tmp_path):
     assert len(ids) >= 2
     assert result.summary
     assert all(ref in {row["id"] for row in entries} for ref in ids)
+
+def test_note_capture_uses_same_whisper_pipeline_and_persists_automatically(engine):
+    client, asr, _ = engine
+    response = client.post(
+        "/v1/meetings", headers=HEADERS,
+        files={"audio": ("note.wav", wav_data(3), "audio/wav")},
+        data={"meeting_id": "voice-note-2026-test", "kind": "note", "title": "یادداشت من"},
+    )
+    assert response.status_code == 202, response.text
+    job_id = response.json()["id"]
+    result = wait_for(client, job_id, "completed")
+    assert result["kind"] == "note"
+    assert result["generated_note_id"]
+    assert result["clean_text"]
+    note = client.get("/v1/notes/by-recording/" + job_id, headers=HEADERS)
+    assert note.status_code == 200, note.text
+    assert note.json()["title"] == "یادداشت من"
+    assert "تصمیم" in note.json()["content"]
+    assert note.json()["source_meeting_id"] == job_id
+    assert client.get("/v1/tasks", headers=HEADERS).json()["total"] == 0
+    assert client.get("/v1/meetings/" + job_id + "/cleaned",
+                      headers=HEADERS).json()["total"] == 1
+    # Idempotent retry/duplicate upload must not generate more notes.
+    again = client.post(
+        "/v1/meetings", headers=HEADERS,
+        files={"audio": ("note.wav", wav_data(3), "audio/wav")},
+        data={"meeting_id": "voice-note-2026-test", "kind": "note"},
+    )
+    assert again.json()["id"] == job_id
+    assert client.get("/v1/notes", headers=HEADERS).json()["total"] == 1
