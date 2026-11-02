@@ -453,7 +453,7 @@ export function NotesMode() {
           <div className="flex flex-col gap-3 rounded-xl bg-wash/30 border border-line p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Mic size={17} />
-              Voice note
+              {t("notes.voiceTitle")}
             </div>
             {recording ? (
               <RecordingPill
@@ -469,33 +469,33 @@ export function NotesMode() {
                 className="inline-flex w-fit items-center gap-2 rounded-full bg-logo-primary px-4 py-2 text-sm text-white disabled:opacity-50"
               >
                 <Mic size={16} />
-                Start recording
+                {t("notes.startVoice")}
               </button>
             )}
             {livePartial && recording && (
               <p className="text-sm text-ink-3" dir="auto">
                 {livePartial}
-                <span className="ms-1 animate-pulse">▍</span>
+                <span className="ms-1 inline-block h-4 w-0.5 animate-pulse bg-logo-primary" aria-hidden="true" />
               </p>
             )}
             {liveStatus === "draining" && (
               <p className="text-sm text-ink-3" role="status">
-                Finishing transcription and Qwen cleanup...
+                {t("notes.voiceDraining")}
               </p>
             )}
             {liveStatus === "saving" && (
               <p className="text-sm text-ink-3" role="status">
-                Saving and organizing note...
+                {t("notes.voiceSaving")}
               </p>
             )}
             {liveStatus === "completed" && (
               <p className="text-sm text-logo-primary" role="status">
-                Transcription saved. You can edit your note below.
+                {t("notes.voiceReady")}
               </p>
             )}
             {liveStatus === "failed" && (
               <p className="text-sm text-red-500" role="alert">
-                Live transcription was interrupted. Review or save the draft below.
+                {t("notes.voiceFailed")}
               </p>
             )}
           </div>
