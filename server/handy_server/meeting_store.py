@@ -41,6 +41,11 @@ class MeetingStore:
                 PRIMARY KEY(job_id, id),
                 FOREIGN KEY(job_id) REFERENCES meeting_jobs(id)
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS meeting_speaker_names (
+                job_id TEXT NOT NULL, speaker TEXT NOT NULL,
+                name TEXT NOT NULL, PRIMARY KEY(job_id, speaker),
+                FOREIGN KEY(job_id) REFERENCES meeting_jobs(id)
+            )""")
             db.execute("""CREATE INDEX IF NOT EXISTS meeting_segment_seek
                 ON meeting_segments(job_id, start, id)""")
             # Unfinished jobs survive app restarts; no in-memory queue is authoritative.
@@ -109,6 +114,66 @@ class MeetingStore:
         with self.connect() as db:
             db.executemany("""UPDATE meeting_segments SET speaker=?
                 WHERE job_id=? AND id=?""", ((speaker,job_id,id) for id,speaker in updates))
+
+    def replace_aligned(self, job_id: str, replacements: list[tuple[str, list[dict]]]):
+        """Atomically split original ASR blocks, preserving words and stable IDs."""
+        with self.connect() as db:
+            for original_id, parts in replacements:
+                if len(parts) < 2:
+                    continue
+                original = db.execute(
+                    "SELECT text FROM meeting_segments WHERE job_id=? AND id=?",
+                    (job_id, original_id),
+                ).fetchone()
+                if not original or " ".join(p["text"] for p in parts) != original["text"]:
+                    raise ValueError("Aligned words must preserve every original token")
+                db.execute("DELETE FROM meeting_segments WHERE job_id=? AND id=?",
+                           (job_id, original_id))
+                for part in parts:
+                    db.execute("""INSERT INTO meeting_segments
+                        (job_id,id,speaker,start,end,text) VALUES(?,?,?,?,?,?)""",
+                        (job_id, part["id"], part["speaker"], part["start"],
+                         part["end"], part["text"]))
+
+    def speaker_names(self, job_id: str) -> dict[str, str]:
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT speaker,name FROM meeting_speaker_names WHERE job_id=?",
+                (job_id,),
+            ).fetchall()
+        return {r["speaker"]: r["name"] for r in rows}
+
+    def rename_speaker(self, job_id: str, speaker: str, name: str):
+        with self.connect() as db:
+            job = db.execute("SELECT status FROM meeting_jobs WHERE id=?",
+                             (job_id,)).fetchone()
+            if not job or job["status"] != "completed":
+                raise ValueError("Meeting must be completed")
+            if not db.execute(
+                "SELECT 1 FROM meeting_segments WHERE job_id=? AND speaker=? LIMIT 1",
+                (job_id, speaker),
+            ).fetchone():
+                raise ValueError("Speaker not found in meeting")
+            if name:
+                db.execute("""INSERT INTO meeting_speaker_names(job_id,speaker,name)
+                    VALUES(?,?,?) ON CONFLICT(job_id,speaker) DO UPDATE SET name=excluded.name""",
+                    (job_id, speaker, name))
+            else:
+                db.execute("DELETE FROM meeting_speaker_names WHERE job_id=? AND speaker=?",
+                           (job_id, speaker))
+
+    def correct_speaker(self, job_id: str, segment_id: str, speaker: str):
+        with self.connect() as db:
+            job = db.execute("SELECT status FROM meeting_jobs WHERE id=?",
+                             (job_id,)).fetchone()
+            if not job or job["status"] != "completed":
+                raise ValueError("Meeting must be completed")
+            result = db.execute(
+                "UPDATE meeting_segments SET speaker=? WHERE job_id=? AND id=?",
+                (speaker, job_id, segment_id),
+            )
+            if result.rowcount != 1:
+                raise KeyError("Transcript segment not found")
 
     def segments(self, job_id: str, after: int=0, limit: int=150) -> list[dict]:
         with self.connect() as db:
@@ -219,5 +284,6 @@ class MeetingStore:
             "processed_seconds": min(job["duration"], job["next_sample"]/16000),
             "transcript_count": self.count(job_id),
             "transcript": self.segments(job_id,limit=limit),
+            "speaker_names": self.speaker_names(job_id),
             "insights": json.loads(job["insights"]) if job["insights"] else None,
         }
