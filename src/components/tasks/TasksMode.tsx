@@ -11,7 +11,11 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type { AiTask, AiTaskInput, AiTaskStatus } from "@/lib/ai/contracts";
-import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import {
+  LOCAL_AI_TEST_MODE,
+  loadServerUrl,
+  saveServerUrl,
+} from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const toError = (error: unknown) =>
@@ -147,6 +151,7 @@ export function TasksMode() {
         </h1>
         <p className="text-sm text-ink-3 mt-1">{t("tasks.intro")}</p>
       </header>
+      {!LOCAL_AI_TEST_MODE && (
       <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           {t("tasks.serverUrl")}
@@ -180,6 +185,7 @@ export function TasksMode() {
         </label>
         <p className="text-xs text-ink-3">{t("tasks.privacy")}</p>
       </section>
+      )}
 
       <section className="rounded-xl border border-line p-3 flex gap-2 flex-wrap items-end">
         <label className="flex-1 min-w-44 text-sm flex flex-col gap-1">
