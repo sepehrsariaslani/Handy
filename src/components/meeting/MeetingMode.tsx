@@ -1,0 +1,295 @@
+import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
+import { Mic, Square, UploadCloud, RefreshCw, Server, FileAudio, ClipboardList } from "lucide-react";
+import { toast } from "sonner";
+
+type MeetingInfo = {
+  id: string;
+  started_at: string;
+  audio_path: string;
+  bytes: number;
+  status: "recording" | "ready" | "incomplete" | "interrupted";
+};
+
+type Utterance = {
+  id: string;
+  speaker: string;
+  start: number;
+  end: number;
+  text: string;
+};
+
+type Evidence = {
+  text: string;
+  source_ids: string[];
+  assignee?: string | null;
+  due_date?: string | null;
+};
+
+type Insights = {
+  summary: string;
+  decisions: Evidence[];
+  tasks: Evidence[];
+  open_questions: Evidence[];
+};
+
+type MeetingJob = {
+  id: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  stage?: string;
+  error?: string | null;
+  transcript?: Utterance[];
+  insights?: Insights;
+};
+
+const serverDefault = "http://127.0.0.1:8765";
+
+const readError = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+const formatTime = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return [Math.floor(minutes / 60), minutes % 60, secs]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+};
+
+export const MeetingMode = () => {
+  const { t } = useTranslation();
+  const [meetings, setMeetings] = useState<MeetingInfo[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [serverUrl, setServerUrl] = useState(serverDefault);
+  // Token stays in memory; never store it in web storage or application logs.
+  const [apiKey, setApiKey] = useState("");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [job, setJob] = useState<MeetingJob | null>(null);
+
+  const refresh = useCallback(async () => {
+    const result = await invoke<MeetingInfo[]>("list_meetings");
+    setMeetings(result);
+    const active = result.find((item) => item.status === "recording");
+    setCurrentId(active?.id ?? null);
+  }, []);
+
+  useEffect(() => {
+    void refresh().catch((error) => toast.error(readError(error)));
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const result = await invoke<MeetingJob>("get_meeting_job", {
+          serverUrl,
+          apiKey: apiKey || null,
+          jobId,
+        });
+        if (alive) setJob(result);
+      } catch (error) {
+        if (alive) toast.error(readError(error));
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (job?.status !== "completed" && job?.status !== "failed") {
+        void load();
+      }
+    }, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [apiKey, jobId, job?.status, serverUrl]);
+
+  const start = async () => {
+    if (!consent || busy) return;
+    setBusy(true);
+    try {
+      const info = await invoke<MeetingInfo>("start_meeting");
+      setCurrentId(info.id);
+      await refresh();
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    if (busy || !currentId) return;
+    setBusy(true);
+    try {
+      await invoke<MeetingInfo>("stop_meeting");
+      setCurrentId(null);
+      setConsent(false);
+      await refresh();
+    } catch (error) {
+      toast.error(readError(error));
+      setCurrentId(null);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const upload = async (meeting: MeetingInfo) => {
+    if (busy) return;
+    setBusy(true);
+    setJobId(null);
+    setJob(null);
+    try {
+      const result = await invoke<MeetingJob>("submit_meeting", {
+        id: meeting.id,
+        serverUrl,
+        apiKey: apiKey || null,
+      });
+      setJobId(result.id);
+      setJob(result);
+      toast.success(t("meeting.uploaded"));
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sources = (ids: string[]) => (
+    <span className="inline-flex flex-wrap gap-1 ps-2">
+      {ids.map((id) => (
+        <button
+          key={id}
+          type="button"
+          className="text-xs text-logo-primary underline"
+          onClick={() => document.getElementById("meeting-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        >
+          {id}
+        </button>
+      ))}
+    </span>
+  );
+
+  const evidence = (rows: Evidence[] | undefined, title: string) => (
+    <section className="w-full">
+      <h3 className="font-semibold mb-2">{title}</h3>
+      {rows?.length ? (
+        <ul className="flex flex-col gap-2">
+          {rows.map((entry, index) => (
+            <li key={index} className="rounded-lg border border-line p-3 text-sm">
+              <span>{entry.text}</span>
+              {entry.assignee && <span className="text-ink-3 ms-2">· {t("meeting.assignee")}: {entry.assignee}</span>}
+              {entry.due_date && <span className="text-ink-3 ms-2">· {t("meeting.dueDate")}: {entry.due_date}</span>}
+              {sources(entry.source_ids ?? [])}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-ink-3 text-sm">{t("meeting.none")}</p>
+      )}
+    </section>
+  );
+
+  return (
+    <div className="w-full max-w-3xl flex flex-col gap-5 pb-8">
+      <div className="w-full">
+        <h1 className="text-xl font-semibold flex gap-2 items-center"><Mic size={22} />{t("meeting.title")}</h1>
+        <p className="text-sm text-ink-3 mt-2">{t("meeting.intro")}</p>
+      </div>
+      <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold">{t("meeting.recording")}</h2>
+          <span className="text-xs text-ink-3">{currentId ? t("meeting.recordingNow") : t("meeting.stopped")}</span>
+        </div>
+        <label className="text-sm flex gap-2 items-start">
+          <input type="checkbox" checked={consent} disabled={Boolean(currentId)} onChange={(event) => setConsent(event.target.checked)} />
+          <span>{t("meeting.consent")}</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {!currentId ? (
+            <button type="button" disabled={!consent || busy} onClick={() => void start()}
+              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">
+              <Mic size={16} />{t("meeting.start")}
+            </button>
+          ) : (
+            <button type="button" disabled={busy} onClick={() => void stop()}
+              className="flex items-center gap-2 bg-red-600 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">
+              <Square size={16} />{t("meeting.stop")}
+            </button>
+          )}
+          <button type="button" onClick={() => void refresh()} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+            <RefreshCw size={16} />{t("meeting.refresh")}
+          </button>
+        </div>
+        <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
+      </div>
+
+      <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
+        <h2 className="font-semibold flex items-center gap-2"><Server size={17} />{t("meeting.server")}</h2>
+        <label className="flex flex-col gap-1 text-sm">
+          {t("meeting.serverUrl")}
+          <input className="rounded-lg border border-line bg-transparent px-3 py-2" type="url" value={serverUrl}
+            onChange={(event) => setServerUrl(event.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          {t("meeting.apiKey")}
+          <input className="rounded-lg border border-line bg-transparent px-3 py-2" type="password" autoComplete="off"
+            value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
+        </label>
+        <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
+      </div>
+
+      <section className="w-full flex flex-col gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><FileAudio size={17} />{t("meeting.saved")}</h2>
+        {meetings.length === 0 && <p className="text-ink-3 text-sm">{t("meeting.noRecordings")}</p>}
+        {meetings.map((meeting) => (
+          <div key={meeting.id} className="border border-line rounded-lg p-3 flex flex-wrap justify-between gap-3 items-center">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{new Date(meeting.started_at).toLocaleString()}</p>
+              <p className="text-xs text-ink-3">{meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB</p>
+              <p className="text-xs text-ink-3 break-all">{meeting.audio_path}</p>
+            </div>
+            <button type="button" disabled={busy || meeting.status !== "ready"} onClick={() => void upload(meeting)}
+              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+              <UploadCloud size={16} />{t("meeting.process")}
+            </button>
+          </div>
+        ))}
+      </section>
+
+      {job && (
+        <div className="w-full flex flex-col gap-4 border border-line rounded-xl p-4">
+          <h2 className="font-semibold flex items-center gap-2"><ClipboardList size={18}/>{t("meeting.results")}</h2>
+          <p className="text-sm text-ink-3">{t("meeting.status")}: {job.status} · {job.stage ?? "-"}</p>
+          {job.error && <p role="alert" className="text-red-500 text-sm">{job.error}</p>}
+          {job.insights && (
+            <>
+              <section><h3 className="font-semibold mb-2">{t("meeting.summary")}</h3><p className="text-sm whitespace-pre-wrap">{job.insights.summary}</p></section>
+              {evidence(job.insights.decisions, t("meeting.decisions"))}
+              {evidence(job.insights.tasks, t("meeting.tasks"))}
+              {evidence(job.insights.open_questions, t("meeting.questions"))}
+            </>
+          )}
+          {job.transcript && (
+            <details className="w-full" open={Boolean(job.error)}>
+              <summary className="cursor-pointer font-semibold">{t("meeting.transcript")}</summary>
+              <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
+                {job.transcript.map((item) => (
+                  <p key={item.id} id={"meeting-" + item.id} className="text-sm border-b border-line pb-2">
+                    <span className="font-medium">{item.speaker}</span>
+                    <span className="text-xs text-ink-3 ms-2">{formatTime(item.start)} · {item.id}</span>
+                    <span className="block whitespace-pre-wrap mt-1">{item.text}</span>
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+          <p className="text-xs text-ink-3">{t("meeting.review")}</p>
+        </div>
+      )}
+    </div>
+  );
+};

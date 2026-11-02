@@ -1,8 +1,9 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Cog, FlaskConical, History, Info, Sparkles, Cpu } from "lucide-react";
+import { Cog, FlaskConical, History, Info, Sparkles, Cpu, Mic } from "lucide-react";
 import HandyTextLogo from "./icons/HandyTextLogo";
 import HandyHand from "./icons/HandyHand";
+import { MeetingMode } from "./meeting/MeetingMode";
 import { useSettings } from "../hooks/useSettings";
 import {
   GeneralSettings,
@@ -36,6 +37,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.general",
     icon: HandyHand,
     component: GeneralSettings,
+    enabled: () => true,
+  },
+  meeting: {
+    labelKey: "sidebar.meeting",
+    icon: Mic,
+    component: MeetingMode,
     enabled: () => true,
   },
   history: {
