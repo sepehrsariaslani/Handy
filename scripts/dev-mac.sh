@@ -6,6 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Shared local registry of selected, already-downloaded GGUF files.
+# Only symlinks are written here, never copied model weights.
+export HANDY_MEETING_MODEL_DIR="$ROOT/server/data/asr-models"
+
 bash scripts/link-dev-whisper-model.sh
 
 # Never kill an existing development server: it may belong to an active
