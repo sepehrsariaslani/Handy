@@ -19,7 +19,7 @@ All three modes share `SessionCreate`, `SessionRecord`, `TranscriptSegment` (raw
 ## HTTP contract
 
 - `GET /health`: liveness **only**. No auth; does not imply model readiness.
-- `GET /v1/capabilities`: bearer auth; supported modes and *actual* worker readiness, initially all false.
+- `GET /v1/capabilities`: bearer auth; supported modes and _actual_ worker readiness, initially all false.
 - `POST /v1/sessions`: bearer auth; create session metadata, status `created`; supports mode, title, language, tone.
 - `GET /v1/sessions/{id}`: bearer auth; load session metadata.
 - `POST /v1/sessions/{id}/chunks`: **501** until phase 3, must eventually use sequence IDs, timestamps, idempotency keys, ACK/resume, backpressure, bounded audio buffers and overlap deduplication.
@@ -33,7 +33,7 @@ Phase-1 persistence is SQLite metadata, not recordings. No model processes, queu
 2. Phase 3: idempotent streaming session/chunk protocol (5-s target, dynamic VAD) and rollback-safe partial/final text events. Keep old local dictation until the server path passes regression and latency tests.
 3. Phase 5: change current Meeting Mode's whole-file upload to resumable chunked object storage; don't buffer 20h recordings in memory. Add diarization and evidence-backed analysis.
 4. Phase 6: `note_taking` analysis, hierarchical long-form summaries and slide/notes exports.
-5. Before public service: accounts/tenant isolation, authentication and authorization, rate limits, encrypted storage and data retention policies. The current single shared API key is for one trusted deployment, *not* a public multi-user service.
+5. Before public service: accounts/tenant isolation, authentication and authorization, rate limits, encrypted storage and data retention policies. The current single shared API key is for one trusted deployment, _not_ a public multi-user service.
 
 ## Compatibility and baseline
 
