@@ -85,6 +85,7 @@ const clock = (seconds: number) =>
 
 export const MeetingMode = () => {
   const { t } = useTranslation();
+  const speakerLabel = t("meeting.speakerPlaceholder");
   const [meetings, setMeetings] = useState<MeetingInfo[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -319,15 +320,26 @@ export const MeetingMode = () => {
   }, [job, selected, refresh]);
 
   const saveSpeakerName = async (speaker: string) => {
-    if (!job || !authToken || job.status !== "completed" || speaker === "Unknown")
+    if (
+      !job ||
+      !authToken ||
+      job.status !== "completed" ||
+      speaker === "Unknown"
+    )
       return;
     try {
-      const data = await new HandyAiClient(serverUrl, authToken)
-        .saveMeetingSpeakerName(job.id, speaker, speakerNames[speaker] ?? "");
+      const client = new HandyAiClient(serverUrl, authToken);
+      const data = await client.saveMeetingSpeakerName(
+        job.id,
+        speaker,
+        speakerNames[speaker] ?? "",
+      );
       setSpeakerNames(data.speaker_names);
-      setJob((current) => current?.id === job.id
-        ? { ...current, speaker_names: data.speaker_names }
-        : current);
+      setJob((current) =>
+        current?.id === job.id
+          ? { ...current, speaker_names: data.speaker_names }
+          : current,
+      );
     } catch (error) {
       toast.error(readError(error));
     }
@@ -335,23 +347,26 @@ export const MeetingMode = () => {
 
   const correctSpeaker = async (part: Utterance, chosen: string) => {
     if (!job || !authToken || job.status !== "completed") return;
-    const speaker = chosen === "__new"
-      ? "MANUAL_" + String(
-          Math.max(0, ...speakers
-            .filter((id) => /^MANUAL_[0-9]+$/.test(id))
-            .map((id) => Number(id.slice(7)))) + 1,
-        ).padStart(2, "0")
-      : chosen;
+    const manualIds = speakers
+      .filter((id) => /^MANUAL_[0-9]+$/.test(id))
+      .map((id) => Number(id.slice(7)));
+    const speaker =
+      chosen === "__new"
+        ? `MANUAL_${String(Math.max(0, ...manualIds) + 1).padStart(2, "0")}`
+        : chosen;
     try {
-      await new HandyAiClient(serverUrl, authToken)
-        .correctMeetingSegmentSpeaker(job.id, part.id, speaker);
-      setJob((current) => current?.id === job.id
-        ? {
-            ...current,
-            transcript: current.transcript?.map((entry) =>
-              entry.id === part.id ? { ...entry, speaker } : entry),
-          }
-        : current);
+      const client = new HandyAiClient(serverUrl, authToken);
+      await client.correctMeetingSegmentSpeaker(job.id, part.id, speaker);
+      setJob((current) =>
+        current?.id === job.id
+          ? {
+              ...current,
+              transcript: current.transcript?.map((entry) =>
+                entry.id === part.id ? { ...entry, speaker } : entry,
+              ),
+            }
+          : current,
+      );
     } catch (error) {
       toast.error(readError(error));
     }
@@ -988,8 +1003,10 @@ export const MeetingMode = () => {
               </summary>
               {speakers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {speakers.filter((speaker) => speaker !== "Unknown").map((speaker) => (
-                    <label
+                  {speakers
+                    .filter((speaker) => speaker !== "Unknown")
+                    .map((speaker) => (
+                      <label
                       key={speaker}
                       className="text-xs flex items-center gap-2"
                     >
@@ -1011,8 +1028,8 @@ export const MeetingMode = () => {
                         }}
                         disabled={job.status !== "completed"}
                       />
-                    </label>
-                  ))}
+                      </label>
+                    ))}
                 </div>
               )}
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
@@ -1024,21 +1041,25 @@ export const MeetingMode = () => {
                   >
                     <div className="flex items-center flex-wrap gap-2 text-xs text-ink-3">
                       <select
-                        aria-label={t("meeting.speakerPlaceholder", {
-                          defaultValue: "Speaker",
-                        }) + " " + part.id}
+                        aria-label={`${speakerLabel} ${part.id}`}
                         className="rounded-md border border-line bg-transparent px-1 py-1 max-w-[180px]"
                         value={part.speaker}
                         disabled={job.status !== "completed"}
-                        onChange={(event) => void correctSpeaker(part, event.target.value)}
+                        onChange={(event) =>
+                          void correctSpeaker(part, event.target.value)
+                        }
                       >
-                        {[...new Set(["Unknown", ...speakers, part.speaker])].map((id) => (
-                          <option key={id} value={id}>
-                            {speakerNames[id] || id}
-                          </option>
-                        ))}
+                        {[...new Set(["Unknown", ...speakers, part.speaker])].map(
+                          (id) => (
+                            <option key={id} value={id}>
+                              {speakerNames[id] || id}
+                            </option>
+                          ),
+                        )}
                         <option value="__new">
-                          {t("meeting.newSpeaker", { defaultValue: "+ New speaker" })}
+                          {t("meeting.newSpeaker", {
+                            defaultValue: "+ New speaker",
+                          })}
                         </option>
                       </select>
                       <span>{clock(part.start)} · {part.id}</span>
