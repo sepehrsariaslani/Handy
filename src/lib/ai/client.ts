@@ -178,4 +178,81 @@ export class HandyAiClient {
       body: JSON.stringify(body),
     });
   }
+
+  listTasks(status?: import("./contracts").AiTaskStatus): Promise<import("./contracts").AiTaskPage> {
+    const params = status ? "?status=" + encodeURIComponent(status) : "";
+    return this.request("/v1/tasks" + params);
+  }
+
+  createTask(input: import("./contracts").AiTaskInput): Promise<import("./contracts").AiTask> {
+    return this.request("/v1/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  updateTask(
+    task: import("./contracts").AiTask,
+    input: import("./contracts").AiTaskInput,
+    status: import("./contracts").AiTaskStatus,
+  ): Promise<import("./contracts").AiTask> {
+    return this.request("/v1/tasks/" + task.id, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...input, status, version: task.version }),
+    });
+  }
+
+  deleteTask(id: string): Promise<void> {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid task ID");
+    return this.request("/v1/tasks/" + id, { method: "DELETE" });
+  }
+
+  importMeetingTasks(jobId: string): Promise<{ created: number; tasks: import("./contracts").AiTask[] }> {
+    if (!/^[a-f0-9]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
+    return this.request("/v1/tasks/from-meeting/" + jobId, { method: "POST" });
+  }
+
+  listConversations(): Promise<{ items: import("./contracts").AiConversation[] }> {
+    return this.request("/v1/memory/conversations");
+  }
+
+  createConversation(title: string): Promise<import("./contracts").AiConversation> {
+    return this.request("/v1/memory/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  getConversation(id: string): Promise<import("./contracts").AiConversationDetail> {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid conversation ID");
+    return this.request("/v1/memory/conversations/" + id);
+  }
+
+  deleteConversation(id: string): Promise<void> {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid conversation ID");
+    return this.request("/v1/memory/conversations/" + id, { method: "DELETE" });
+  }
+
+  askInConversation(
+    conversation: import("./contracts").AiConversation,
+    body: import("./contracts").AiMemoryQuery,
+  ): Promise<{ conversation: import("./contracts").AiConversation; result: import("./contracts").AiMemoryResponse }> {
+    return this.request("/v1/memory/conversations/" + conversation.id + "/turns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, expected_turns: conversation.turn_count }),
+    });
+  }
+
+  getSemanticStatus(): Promise<import("./contracts").AiSemanticStatus> {
+    return this.request("/v1/memory/semantic/status");
+  }
+
+  syncSemantic(limit = 100): Promise<{ indexed: number; model: string }> {
+    return this.request("/v1/memory/semantic/sync?limit=" + limit, { method: "POST" });
+  }
+
 }

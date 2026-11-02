@@ -159,3 +159,56 @@ export interface AiMemoryResponse {
   applied_since: string | null;
   applied_until: string | null;
 }
+
+
+/** Phase-8 tasks and durable memory conversations. */
+export type AiTaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+export interface AiTask {
+  id: string;
+  title: string;
+  assignee: string | null;
+  due_date: string | null;
+  status: AiTaskStatus;
+  source_meeting_id: string | null;
+  source_index: number | null;
+  source_ids: string[];
+  source_quotes: { id: string; text: string }[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface AiTaskPage {
+  items: AiTask[];
+  total: number;
+}
+export interface AiTaskInput {
+  title: string;
+  assignee: string | null;
+  due_date: string | null;
+}
+export interface AiConversation {
+  id: string;
+  title: string;
+  turn_count: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface AiConversationTurn {
+  id: string;
+  conversation_id: string;
+  sequence: number;
+  question: string;
+  answer: string | null;
+  status: AiMemoryStatus;
+  citations: string[];
+  created_at: string;
+}
+export interface AiConversationDetail {
+  conversation: AiConversation;
+  turns: AiConversationTurn[];
+}
+export interface AiSemanticStatus {
+  enabled: boolean;
+  model: string;
+  indexed: number;
+}
