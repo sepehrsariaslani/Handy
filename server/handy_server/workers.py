@@ -252,6 +252,89 @@ class GgufWhisperWorker:
             return self._run_cli(path, language, model_id=model_id)
 
 
+class NativeHandyWorker(GgufWhisperWorker):
+    """Use the exact TranscriptionManager behind desktop dictation.
+
+    This calls Handy's dedicated, single-instance-safe --transcribe-file mode.
+    It loads the recording's pinned model, runs the regular long-form, language
+    and text normalization pipeline, then returns its finalized text. The
+    Python service still checkpoints the audio and runs Qwen/diarization.
+    Only the macOS local developer process opts into this backend.
+    """
+
+    def initialize(self) -> None:
+        # Dev starts the API BEFORE cargo finishes compiling the native app.
+        # Validate the actual executable at inference time instead.
+        self._ready = bool(self.settings.asr_enabled and self.settings.native_handy_path)
+
+    def _run_cli(self, audio_path: Path, language: str | None,
+                 timeout: int = 300, model_id: str | None = None
+                 ) -> tuple[list[TranscriptSegment], str | None]:
+        self.selected_path(model_id)
+        binary = self.settings.native_handy_path
+        if binary is None or not binary.is_file() or not os.access(binary, os.X_OK):
+            raise WorkerUnavailable(
+                "Handy native transcription is not compiled yet. "
+                "Start the desktop with bun run dev:mac before processing."
+            )
+        if not model_id:
+            raise WorkerUnavailable(
+                "Native transcription needs a model pinned at recording start"
+            )
+        command = [
+            str(binary), "--transcribe-file", str(audio_path),
+            "--model", model_id, "--json",
+        ]
+        started = monotonic()
+        logger.info(
+            "asr.native.start model=%s language_source=desktop_settings requested_language=%s",
+            model_id, language or "auto",
+        )
+        try:
+            # Audio windows are bounded by MeetingProcessor, so this process
+            # never loads a complete 20-hour recording into memory.
+            with wave.open(str(audio_path), "rb") as reader:
+                duration = reader.getnframes() / reader.getframerate()
+            result = subprocess.run(
+                command, capture_output=True, text=True, check=False,
+                timeout=max(timeout, round(duration * 12)),
+                stdin=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.TimeoutExpired, wave.Error) as exc:
+            logger.warning(
+                "asr.native.failed model=%s error=%s", model_id, type(exc).__name__
+            )
+            raise WorkerFailure("Native Handy transcription could not run") from None
+        if result.returncode != 0:
+            # Never log stderr: model output or user data can appear there.
+            logger.warning(
+                "asr.native.failed model=%s exit_code=%s elapsed_ms=%d",
+                model_id, result.returncode, int((monotonic() - started) * 1000),
+            )
+            raise WorkerFailure(
+                "Native Handy transcription failed; check desktop model and permissions"
+            )
+        try:
+            payload = json.loads(result.stdout)
+            if not isinstance(payload, dict) or payload.get("model") != model_id:
+                raise ValueError("Wrong native model response")
+            content = payload["text"]
+            if not isinstance(content, str):
+                raise ValueError("Invalid native transcript")
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            raise WorkerFailure("Native Handy returned an invalid transcript") from None
+        logger.info(
+            "asr.native.completed model=%s characters=%d elapsed_ms=%d",
+            model_id, len(content), int((monotonic() - started) * 1000),
+        )
+        if not content.strip():
+            return [], None
+        return [TranscriptSegment(
+            id="s000001", start=0.0, end=duration, speaker=None,
+            raw_text=content.strip(), clean_text=None, final=True,
+        )], None
+
+
 class QwenWorker:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
         self.settings = settings
@@ -430,7 +513,9 @@ class QwenWorker:
 class InferenceRuntime:
     def __init__(self, settings: Settings, asr: WhisperWorker | None = None, llm: QwenWorker | None = None):
         self.settings = settings
-        self.asr = asr or (GgufWhisperWorker(settings) if settings.asr_backend == "gguf_cli" else WhisperWorker(settings))
+        self.asr = asr or (NativeHandyWorker(settings) if settings.asr_backend == "native_handy"
+                          else GgufWhisperWorker(settings) if settings.asr_backend == "gguf_cli"
+                          else WhisperWorker(settings))
         self.llm = llm or QwenWorker(settings)
         self._asr_queue = asyncio.Semaphore(1)
         self._llm_queue = asyncio.Semaphore(2)
