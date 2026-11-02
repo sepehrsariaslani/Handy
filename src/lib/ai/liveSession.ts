@@ -141,6 +141,7 @@ export class LiveStreamSession {
   private readonly language: string | null;
   private readonly tone: AiTone;
   private readonly cleanup: boolean;
+  private readonly mode: "dictation" | "note_taking";
   private readonly callbacks: Callbacks;
   private socket: WebSocket | null = null;
   private capture: LiveAudioCapture | null = null;
@@ -158,7 +159,12 @@ export class LiveStreamSession {
   constructor(
     baseUrl: string,
     token: string,
-    config: { language?: string; tone: AiTone; cleanup: boolean },
+    config: {
+      language?: string;
+      tone: AiTone;
+      cleanup: boolean;
+      mode?: "dictation" | "note_taking";
+    },
     callbacks: Callbacks,
   ) {
     this.origin = normalizeServerUrl(baseUrl);
@@ -167,7 +173,14 @@ export class LiveStreamSession {
     this.language = config.language || null;
     this.tone = config.tone;
     this.cleanup = config.cleanup;
+    this.mode = config.mode ?? "dictation";
     this.callbacks = callbacks;
+  }
+
+  private get sessionStorageKey(): string {
+    return this.mode === "note_taking"
+      ? "handy.live.noteSessionId.v1"
+      : SESSION_ID_KEY;
   }
 
   get sessionId(): string | null {
@@ -179,12 +192,12 @@ export class LiveStreamSession {
       resumeSession ||
       (
         await this.client.createSession({
-          mode: "dictation",
+          mode: this.mode,
           tone: this.tone,
           language: this.language,
         })
       ).id;
-    localStorage.setItem(SESSION_ID_KEY, this.session);
+    localStorage.setItem(this.sessionStorageKey, this.session);
     const pending = await oldestPending(this.session);
     this.next = (await lastSequence(this.session)) + 1;
     if (resumeSession) {
@@ -346,7 +359,7 @@ export class LiveStreamSession {
         break;
       case "complete":
         this.callbacks.state("completed");
-        localStorage.removeItem(SESSION_ID_KEY);
+        localStorage.removeItem(this.sessionStorageKey);
         this.dispose();
         break;
       case "error":
