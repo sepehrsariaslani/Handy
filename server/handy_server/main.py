@@ -6,6 +6,8 @@ non-streaming API and local desktop recording path intact.
 from contextlib import asynccontextmanager
 import asyncio
 import hmac
+import logging
+import os
 from pathlib import Path
 import tempfile
 from time import monotonic
@@ -49,6 +51,16 @@ def create_app(
     config = settings or Settings.from_env()
     if len(config.api_key) < 24:
         raise ValueError("API key must contain at least 24 characters")
+    # Model diagnostics are operational metadata only: no prompts, audio, keys
+    # or transcript text are written to logs. Uvicorn config may own root logger.
+    ai_logger = logging.getLogger("handy_server")
+    if not ai_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s"))
+        ai_logger.addHandler(handler)
+    ai_logger.setLevel(os.getenv("HANDY_AI_LOG_LEVEL", "INFO").upper())
+    ai_logger.propagate = False
     store = SessionStore(Path(config.db_path))
     models = runtime or InferenceRuntime(config)
     meeting_store = MeetingStore(Path(config.db_path))
