@@ -49,6 +49,7 @@ export function NotesMode() {
   const [recording, setRecording] = useState(false);
   const [liveLevel, setLiveLevel] = useState(0);
   const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [recordingModel, setRecordingModel] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [speechLanguage, setSpeechLanguage] = useState("auto");
   const [pendingNotes, setPendingNotes] = useState<string[]>([]);
@@ -218,13 +219,14 @@ export function NotesMode() {
     setJobId(null);
     setLiveStatus("recording");
     try {
-      const info = await invoke<{ id: string }>("start_meeting", {
+      const info = await invoke<{ id: string; asr_model_id?: string | null }>("start_meeting", {
         kind: "note",
         title: title.trim() || null,
         meetingDate: null,
         language: speechLanguage === "auto" ? null : speechLanguage,
       });
       setRecordingId(info.id);
+      setRecordingModel(info.asr_model_id ?? null);
       setRecording(true);
     } catch (error) {
       setLiveStatus("failed");
@@ -577,6 +579,9 @@ export function NotesMode() {
                   </option>
                 </select>
               </label>
+            )}
+            {recording && recordingModel && (
+              <p className="text-xs text-ink-3">ASR: {recordingModel}</p>
             )}
             {recording ? (
               <RecordingPill
