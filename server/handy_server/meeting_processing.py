@@ -1,6 +1,7 @@
 """Bounded-memory meeting transcription pipeline, safe restart, and background worker."""
 import asyncio
 import logging
+import re
 from time import monotonic
 from pathlib import Path
 import tempfile
@@ -14,7 +15,73 @@ from .schemas import CleanupRequest, Tone, MeetingAnalysis
 
 LOG = logging.getLogger(__name__)
 RATE = 16000
-WINDOW_SECONDS = 120  # Match the normal full-file ASR context more closely.
+WINDOW_SECONDS = 120  # Existing remote and legacy worker batch bound.
+NATIVE_WINDOW_SECONDS = 600  # The desktop engine handles long-form chunking.
+NATIVE_OVERLAP_SECONDS = 5  # Preserve words spoken across window boundaries.
+
+
+def asr_window_plan(position: int, total_frames: int, native: bool) -> tuple[int, int]:
+    """Return (start_frame, end_frame) with exact coverage of the last sample.
+
+    Native recordings up to ten minutes are sent in ONE full-file pass.
+    Longer native recordings retain a five-second context overlap on
+    subsequent windows. Checkpoints always advance to the non-overlapped end.
+    """
+    if not 0 <= position < total_frames:
+        raise ValueError("Invalid audio window position")
+    if not native:
+        return position, min(total_frames, position + WINDOW_SECONDS * RATE)
+    start = max(0, position - NATIVE_OVERLAP_SECONDS * RATE) if position else 0
+    return start, min(total_frames, start + NATIVE_WINDOW_SECONDS * RATE)
+
+
+def normalized_words(text: str) -> list[str]:
+    text = text.casefold().replace("ي", "ی").replace("ك", "ک")
+    return [word for word in re.findall(r"\w+", text) if word]
+
+
+def remove_overlap(previous: str, current: str) -> str:
+    """Delete only an exact >=3-word repeated boundary, never guess missing speech.
+
+    Different model wording is retained, even at the cost of a repeated
+    phrase. Keeping two versions is safer than erasing a spoken sentence.
+    """
+    preceding = normalized_words(previous)
+    tokens = list(re.finditer(r"\S+", current))
+    current_words = []
+    current_positions = []
+    for token in tokens:
+        words = normalized_words(token.group())
+        for word in words:
+            current_words.append(word)
+            current_positions.append(token.end())
+    for count in range(min(60, len(preceding), len(current_words)), 2, -1):
+        if preceding[-count:] == current_words[:count]:
+            return current[current_positions[count - 1]:].lstrip()
+    return current
+
+
+def preserve_full_cleanup(raw: str, edited: str) -> tuple[str, bool]:
+    """Reject a cleaner response which loses the transcript's last statement.
+
+    A conservative fidelity check: wording corrections are welcome, but
+    removing the last 4 source words or most of the text is not.
+    In those cases we preserve the verbatim ASR output rather than silently
+    serving a confidently shortened transcript.
+    """
+    before = normalized_words(raw)
+    after = normalized_words(edited)
+    if not after and before:
+        return raw, True
+    if len(before) >= 12 and len(after) < len(before) * 0.60:
+        return raw, True
+    if len(before) >= 8:
+        last = before[-4:]
+        # Allow punctuation, newlines and a little additional formatting,
+        # but retain the actual concluding words in order.
+        if not any(after[i:i + 4] == last for i in range(max(0, len(after)-30), len(after)-3)):
+            return raw, True
+    return edited, False
 
 def validated_duration(path: Path, max_seconds: int = 20 * 3600) -> float:
     try:
@@ -91,41 +158,68 @@ class MeetingProcessor:
         if position > limit_frames or position < 0:
             raise ValueError("Invalid persisted transcription checkpoint")
         counter = await asyncio.to_thread(self.store.count, job_id)
+        # Only the native desktop engine uses one long-form pass or overlapping
+        # windows. Existing older jobs keep their original 120s worker path.
+        native = (
+            self.runtime.settings.asr_backend == "native_handy"
+            and bool(job.get("asr_model_id"))
+        )
+        previous = await asyncio.to_thread(
+            self.store.segments, job_id, max(0, counter - 1), 1
+        ) if counter else []
+        previous_text = previous[-1]["text"] if previous else ""
         while position < limit_frames:
-            window, actual = await asyncio.to_thread(
-                wav_window, audio_path, position, min(RATE * WINDOW_SECONDS, limit_frames-position)
-            )
+            start_frame, end_frame = asr_window_plan(position, limit_frames, native)
+            # For an entire native recording, avoid re-encoding or slicing:
+            # the original WAV is precisely what Transcribe receives.
+            whole_file = native and start_frame == 0 and end_frame == limit_frames
+            if whole_file:
+                window = audio_path
+                actual = end_frame - start_frame
+            else:
+                window, actual = await asyncio.to_thread(
+                    wav_window, audio_path, start_frame, end_frame - start_frame
+                )
             window_started = monotonic()
             LOG.info(
-                "meeting.asr.start job=%s offset_seconds=%.1f duration_seconds=%.1f requested_language=%s backend=%s model=%s",
-                job_id, position / RATE, actual / RATE, job["language"] or "auto",
+                "meeting.asr.start job=%s offset_seconds=%.1f duration_seconds=%.1f requested_language=%s backend=%s model=%s overlap_seconds=%.1f",
+                job_id, start_frame / RATE, actual / RATE, job["language"] or "auto",
                 self.runtime.settings.asr_backend, job.get("asr_model_id") or "default",
+                (position - start_frame) / RATE,
             )
             try:
                 segments, language = await self.runtime.transcribe(
                     window, job["language"], job.get("asr_model_id")
                 )
             finally:
-                window.unlink(missing_ok=True)
+                if not whole_file:
+                    window.unlink(missing_ok=True)
             LOG.info(
                 "meeting.asr.done job=%s segments=%d model_reported_language=%s elapsed_ms=%d",
                 job_id, len(segments), language or "unknown",
                 int((monotonic() - window_started) * 1000),
             )
-            start_offset = position / RATE
+            start_offset = start_frame / RATE
             utterances = []
             for segment in segments:
-                if not segment.raw_text.strip():
+                content = segment.raw_text.strip()
+                if not content:
                     continue
+                if native and start_frame < position and not utterances:
+                    content = remove_overlap(previous_text, content)
+                    if not content:
+                        continue
                 counter += 1
                 utterances.append({
                     "id": f"u{counter:08d}",
                     "speaker": "Unknown",
-                    "start": round(start_offset + segment.start, 3),
+                    "start": round(max(position / RATE, start_offset + segment.start), 3),
                     "end": round(min(duration, start_offset + segment.end), 3),
-                    "text": segment.raw_text.strip(),
+                    "text": content,
                 })
-            position += actual
+            if utterances:
+                previous_text = utterances[-1]["text"]
+            position = end_frame
             await asyncio.to_thread(self.store.checkpoint, job_id, position, utterances)
             if self._stop.is_set():
                 return
@@ -169,7 +263,7 @@ class MeetingProcessor:
         length = 0
         cap = min(5500, max(300, self.runtime.settings.max_text_chars))
         for row in utterances:
-            # Native Handy returns one utterance per 120s window. A single
+            # Native Handy returns one utterance per long-form audio window. A single
             # utterance may exceed Qwen's cleanup context budget, so split
             # *within* that text rather than silently dropping its ending.
             for line in meeting_text_parts(row["text"], max_chars=cap - 1):
@@ -195,11 +289,19 @@ class MeetingProcessor:
                             "fa" if sum("\u0600" <= ch <= "\u06ff" for ch in text) > len(text) // 6 else None
                         ),
                     ))
-                    polished.append(edited.clean_text)
+                    safe_text, missing_ending = preserve_full_cleanup(
+                        text, edited.clean_text
+                    )
+                    if missing_ending:
+                        LOG.warning(
+                            "meeting.cleanup_preserved_raw job=%s block=%d reason=missing_content_or_ending",
+                            job_id, index,
+                        )
+                    polished.append(safe_text)
                     LOG.info(
                         "meeting.cleanup job=%s block=%d changed=%s review_required=%s warnings=%d",
-                        job_id, index, edited.clean_text != text,
-                        edited.review_required, len(edited.warnings),
+                        job_id, index, safe_text != text,
+                        edited.review_required or missing_ending, len(edited.warnings),
                     )
                 except (WorkerFailure, WorkerUnavailable, ValueError) as exc:
                     LOG.warning("meeting.cleanup_fallback job=%s block=%d error=%s",
