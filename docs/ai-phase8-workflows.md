@@ -7,9 +7,9 @@ Phase 8 extends the self-hosted Handy desktop app without requiring a hosted AI 
 **Tasks** in the Handy sidebar:
 
 - Create, edit, list, filter and delete tasks, set an assignee and a due date, mark To do / In progress / Done / Cancelled.
-- From a completed meeting, press **Import meeting tasks**. This is an explicit action; the server never silently creates assignments.
+- On meeting completion, Handy automatically saves grounded tasks **within the same SQLite transaction** as the final summary. No Process or Import click is needed after Stop. Tasks are grouped into collapsible sections by meeting title and date; independent tasks have their own group.
 - Imported tasks retain their original transcript utterance IDs and a preview of the cited speech. Tasks with missing or invented sources are skipped.
-- Importing the same meeting again will not duplicate previously imported tasks. Updated tasks use optimistic versions to prevent accidental overwrites.
+- Legacy manual imports remain idempotent for recovery/backfill; repeated imports cannot duplicate tasks. Updated tasks use optimistic versions to prevent accidental overwrites.
 - The app does not yet assign tasks in Google Calendar or external TODO apps or send notifications.
 
 **Multi-turn memory** in the Memory sidebar:
@@ -54,7 +54,7 @@ HANDY_LLM_ENABLED=false
 HANDY_SEMANTIC_ENABLED=false
 ```
 
-Qwen3.5-9B is still optional and independently configured for natural-language answers; otherwise Handy displays retrieved excerpts only. No Qwen is required to create, search and update tasks.
+Qwen3.5-9B is still optional and independently configured for natural-language answers; otherwise Handy displays retrieved excerpts only. No Qwen is required to create, search and update tasks manually. Automatic meeting task extraction requires Whisper and Qwen.
 
 ## API
 
