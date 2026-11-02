@@ -20,6 +20,42 @@ pub struct MeetingInfo {
     pub status: String,
 }
 
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct MeetingUtterance {
+    pub id: String,
+    pub speaker: String,
+    pub start: f64,
+    pub end: f64,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct MeetingEvidence {
+    pub text: String,
+    pub source_ids: Vec<String>,
+    pub assignee: Option<String>,
+    pub due_date: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct MeetingInsights {
+    pub summary: String,
+    pub decisions: Vec<MeetingEvidence>,
+    pub tasks: Vec<MeetingEvidence>,
+    pub open_questions: Vec<MeetingEvidence>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct MeetingJob {
+    pub id: String,
+    pub status: String,
+    pub stage: Option<String>,
+    pub error: Option<String>,
+    pub transcript: Option<Vec<MeetingUtterance>>,
+    pub insights: Option<MeetingInsights>,
+}
+
 struct ActiveMeeting {
     recorder: Recorder,
     info: MeetingInfo,
@@ -249,7 +285,7 @@ pub async fn submit_meeting(
     id: String,
     server_url: String,
     api_key: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<MeetingJob, String> {
     // Only load files belonging to this app's meeting directory.
     if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || id.len() > 80 {
         return Err("Invalid meeting ID".into());
@@ -275,7 +311,7 @@ pub async fn submit_meeting(
     if !status.is_success() {
         return Err(format!("Server rejected the audio ({status}): {body}"));
     }
-    serde_json::from_str(&body).map_err(|e| e.to_string())
+    serde_json::from_str::<MeetingJob>(&body).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -284,7 +320,7 @@ pub async fn get_meeting_job(
     server_url: String,
     api_key: Option<String>,
     job_id: String,
-) -> Result<serde_json::Value, String> {
+) -> Result<MeetingJob, String> {
     if job_id.len() != 32 || !job_id.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("Invalid job ID".into());
     }
