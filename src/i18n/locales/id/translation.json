@@ -115,7 +115,8 @@
     "history": "Riwayat",
     "debug": "Debug",
     "about": "Tentang",
-    "notes": "Notes"
+    "notes": "Notes",
+    "memory": "Memory"
   },
   "onboarding": {
     "customModelDescription": "Tidak didukung secara resmi",
@@ -1107,5 +1108,37 @@
     "keyPoints": "Key points with sources",
     "reviewQuestions": "Review questions",
     "review": "AI may misinterpret details. Check the original source lines before acting on tasks or dates."
+  },
+  "memory": {
+    "title": "Ask your memory",
+    "intro": "Ask about past meetings and notes. Answers show the original evidence, not unsupported guesses.",
+    "serverUrl": "Private Handy server URL",
+    "apiKey": "API token (kept in memory only)",
+    "privacy": "Your notes and meeting transcripts stay on your configured private server. Do not share the server's single-tenant API key.",
+    "question": "Your question",
+    "placeholder": "What did Ali promise to finish in last week's meeting?",
+    "scope": "Search in",
+    "scopes": {
+      "all": "Meetings and notes",
+      "meetings": "Meetings only",
+      "notes": "Notes only"
+    },
+    "since": "From date",
+    "until": "Until date",
+    "dateNotice": "Optional date filters use the server's UTC document creation dates; dates are not inferred from your question.",
+    "ask": "Ask with Qwen",
+    "searchOnly": "Find sources without AI",
+    "working": "Searching…",
+    "result": "Answer and evidence",
+    "noAnswer": "No sufficiently supported answer was found. Check the source excerpts below or broaden your search.",
+    "searchOnlyResult": "Relevant excerpts found. AI answering is unavailable or was not requested.",
+    "answerSources": "Evidence cited",
+    "retrievedSources": "{{count}} sources found",
+    "cited": "Cited in answer",
+    "meeting": "Meeting",
+    "note": "Note",
+    "review": "AI citations confirm that a source exists, not that the conclusion is necessarily correct. Review quotes before acting.",
+    "dateError": "Start date must not exceed end date.",
+    "requestError": "Memory search failed"
   }
 }
