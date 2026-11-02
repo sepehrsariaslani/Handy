@@ -423,11 +423,15 @@ pub async fn submit_meeting(
     if let Some(key) = auth {
         request = request.bearer_auth(key);
     }
-    let begin = request.send().await
+    let begin = request
+        .send()
+        .await
         .map_err(|e| format!("Cannot start meeting upload: {e}"))?
         .error_for_status()
         .map_err(|e| format!("Server rejected meeting upload: {e}"))?
-        .json::<UploadState>().await.map_err(|e| e.to_string())?;
+        .json::<UploadState>()
+        .await
+        .map_err(|e| e.to_string())?;
 
     if begin.total_bytes != audio_size {
         return Err("Server upload size does not match local recording".into());
@@ -440,9 +444,7 @@ pub async fn submit_meeting(
         if upload_id.len() != 32 || !upload_id.chars().all(|ch| ch.is_ascii_hexdigit()) {
             return Err("Invalid upload ID".into());
         }
-        let part_url = server_endpoint(
-            &server_url, &format!("v1/meetings/uploads/{upload_id}")
-        )?;
+        let part_url = server_endpoint(&server_url, &format!("v1/meetings/uploads/{upload_id}"))?;
         let mut offset = begin.offset;
         if offset > audio_size {
             return Err("Invalid upload offset from server".into());
@@ -450,11 +452,14 @@ pub async fn submit_meeting(
         let mut retry_count = 0usize;
         let mut source = File::open(&audio).map_err(|e| e.to_string())?;
         while offset < audio_size {
-            source.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+            source
+                .seek(SeekFrom::Start(offset))
+                .map_err(|e| e.to_string())?;
             let take = (audio_size - offset).min(4 * 1024 * 1024) as usize;
             let mut bytes = vec![0; take];
             source.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-            let mut request = http.put(part_url.clone())
+            let mut request = http
+                .put(part_url.clone())
                 .header("X-Upload-Offset", offset.to_string())
                 .body(bytes);
             if let Some(key) = auth {
@@ -462,7 +467,9 @@ pub async fn submit_meeting(
             }
             match request.send().await {
                 Ok(response) if response.status().is_success() => {
-                    let part = response.json::<UploadPartState>().await
+                    let part = response
+                        .json::<UploadPartState>()
+                        .await
                         .map_err(|e| e.to_string())?;
                     if part.offset <= offset || part.offset > audio_size {
                         return Err("Invalid upload progress from server".into());
@@ -470,12 +477,14 @@ pub async fn submit_meeting(
                     offset = part.offset;
                     retry_count = 0;
                 }
-                Ok(response)
-                    if response.status() == reqwest::StatusCode::CONFLICT => {
+                Ok(response) if response.status() == reqwest::StatusCode::CONFLICT => {
                     retry_count += 1;
                 }
                 Ok(response) => {
-                    return Err(format!("Meeting upload failed (HTTP {})", response.status()));
+                    return Err(format!(
+                        "Meeting upload failed (HTTP {})",
+                        response.status()
+                    ));
                 }
                 Err(_) => {
                     retry_count += 1;
@@ -489,11 +498,15 @@ pub async fn submit_meeting(
                 if let Some(key) = auth {
                     probe = probe.bearer_auth(key);
                 }
-                let state = probe.send().await
+                let state = probe
+                    .send()
+                    .await
                     .map_err(|_| "Cannot reconnect to meeting upload")?
                     .error_for_status()
                     .map_err(|_| "Cannot resume meeting upload")?
-                    .json::<UploadState>().await.map_err(|e| e.to_string())?;
+                    .json::<UploadState>()
+                    .await
+                    .map_err(|e| e.to_string())?;
                 if state.offset > audio_size {
                     return Err("Server resumed past the end of the file".into());
                 }
@@ -501,17 +514,22 @@ pub async fn submit_meeting(
             }
         }
         let finish_url = server_endpoint(
-            &server_url, &format!("v1/meetings/uploads/{upload_id}/finish")
+            &server_url,
+            &format!("v1/meetings/uploads/{upload_id}/finish"),
         )?;
         let mut request = http.post(finish_url);
         if let Some(key) = auth {
             request = request.bearer_auth(key);
         }
-        request.send().await
+        request
+            .send()
+            .await
             .map_err(|e| format!("Cannot finish meeting upload: {e}"))?
             .error_for_status()
             .map_err(|e| format!("Meeting upload finalize failed: {e}"))?
-            .json::<MeetingJob>().await.map_err(|e| e.to_string())?
+            .json::<MeetingJob>()
+            .await
+            .map_err(|e| e.to_string())?
     };
     info.remote_job_id = Some(job.id.clone());
     info.remote_server_url = Some(server_url);
@@ -570,7 +588,6 @@ pub async fn retry_meeting_job(
         .await
         .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 #[specta::specta]

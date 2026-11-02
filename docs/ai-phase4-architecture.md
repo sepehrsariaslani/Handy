@@ -7,11 +7,11 @@ WAV persistence, transcription history and clipboard/paste. Instead of calling
 only the local transcription model after recording stops, it now routes the
 captured 16 kHz audio based on a user-selected preference:
 
-| Mode | On shortcut start | On shortcut stop | On server error |
-| --- | --- | --- | --- |
-| Local | Preload local model and VAD | Existing transcribe-cpp implementation | Not applicable |
-| Server first + offline fallback | Preload the local model and VAD | Upload WAV to authenticated Handy phase-2 API and use returned text | Reuse the *same captured audio* with local transcribe-cpp |
-| Server only | Record without demanding any local model be installed | Upload WAV to authenticated Handy phase-2 API | Return a visible transcription failure without silently using another model |
+| Mode                            | On shortcut start                                     | On shortcut stop                                                    | On server error                                                             |
+| ------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Local                           | Preload local model and VAD                           | Existing transcribe-cpp implementation                              | Not applicable                                                              |
+| Server first + offline fallback | Preload the local model and VAD                       | Upload WAV to authenticated Handy phase-2 API and use returned text | Reuse the _same captured audio_ with local transcribe-cpp                   |
+| Server only                     | Record without demanding any local model be installed | Upload WAV to authenticated Handy phase-2 API                       | Return a visible transcription failure without silently using another model |
 
 The resulting text continues through Handy's established optional
 post-processing action, history recording, paste and cancellation checks. The
@@ -64,10 +64,12 @@ should not be used together.
 ## Verification
 
 Run:
+
 - `cd src-tauri && cargo fmt -- --check && cargo test remote_dictation`
 - `bun run lint && bun run format:check && bun run build`
 
 Manual verification needs a running server with Whisper Large V3:
+
 - Select local mode, dictate, and verify typing/history unchanged.
 - Select server-first with local model installed; dictate once with the
   server working and once after stopping the server. Verify both paste text.
