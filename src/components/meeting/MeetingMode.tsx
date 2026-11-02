@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import {
   Mic,
-  Square,
   UploadCloud,
   RefreshCw,
   Server,
@@ -21,6 +21,7 @@ import {
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { HandyAiClient } from "@/lib/ai/client";
+import { RecordingPill } from "@/components/ui/RecordingPill";
 
 type MeetingInfo = {
   id: string;
@@ -89,6 +90,8 @@ export const MeetingMode = () => {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [level, setLevel] = useState(0);
+  const [autoProcessing, setAutoProcessing] = useState(false);
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
   // Token stays in memory; never store it in web storage or application logs.
   const [apiKey, setApiKey] = useState("");
@@ -116,6 +119,23 @@ export const MeetingMode = () => {
   useEffect(() => {
     void refresh().catch((error) => toast.error(readError(error)));
   }, [refresh]);
+
+  // The native meeting recorder sends actual RMS levels from the same audio
+  // sink that writes the durable WAV. No second microphone is opened.
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void listen<number>("meeting-audio-level", (event) => {
+      if (active) setLevel(event.payload);
+    }).then((stop) => {
+      if (active) unlisten = stop;
+      else stop();
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!jobId || !authToken) return;
@@ -168,15 +188,38 @@ export const MeetingMode = () => {
     if (busy || !currentId) return;
     setBusy(true);
     try {
-      await invoke<MeetingInfo>("stop_meeting");
+      const meeting = await invoke<MeetingInfo>("stop_meeting");
       setCurrentId(null);
+      setLevel(0);
       setConsent(false);
       await refresh();
+
+      // Stop -> upload -> transcribe -> analyze with Qwen automatically.
+      // A failed upload never deletes the safely saved local recording;
+      // the Process button remains available for retry.
+      if (!authToken) {
+        toast.error("Local AI is not connected. Recording was saved for retry.");
+        return;
+      }
+      setAutoProcessing(true);
+      setJob(null);
+      setJobId(null);
+      setVisibleCount(150);
+      setTranscriptOpen(true);
+      setSpeakerNames({});
+      const result = await invoke<MeetingJob>("submit_meeting", {
+        id: meeting.id,
+        serverUrl,
+        apiKey: authToken,
+      });
+      setJobId(result.id);
+      setJob(result);
     } catch (error) {
       toast.error(readError(error));
       setCurrentId(null);
       await refresh();
     } finally {
+      setAutoProcessing(false);
       setBusy(false);
     }
   };
@@ -423,15 +466,12 @@ export const MeetingMode = () => {
               {t("meeting.start")}
             </button>
           ) : (
-            <button
-              type="button"
+            <RecordingPill
+              level={level}
               disabled={busy}
-              onClick={() => void stop()}
-              className="flex items-center gap-2 bg-red-600 text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <Square size={16} />
-              {t("meeting.stop")}
-            </button>
+              onStop={() => void stop()}
+              label={t("meeting.recordingNow")}
+            />
           )}
           <button
             type="button"
@@ -442,6 +482,11 @@ export const MeetingMode = () => {
             {t("meeting.refresh")}
           </button>
         </div>
+        {autoProcessing && (
+          <p className="text-sm text-logo-primary" role="status">
+            Uploading recording and starting transcription...
+          </p>
+        )}
         <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
       </div>
 
@@ -526,7 +571,7 @@ export const MeetingMode = () => {
                 if (meeting.remote_job_id) {
                   setJob(null);
                   setVisibleCount(150);
-                  setTranscriptOpen(false);
+                  setTranscriptOpen(true);
                   setSpeakerNames({});
                   setServerUrl(meeting.remote_server_url || serverUrl);
                   setJobId(meeting.remote_job_id);
