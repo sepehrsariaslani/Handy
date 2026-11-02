@@ -79,6 +79,67 @@ after environment changes. `/v1/models/status` confirms reachability but
 does **not** prove inference; test `/v1/text/cleanup` separately. A cold
 9B model on a memory-limited Mac may be slow or fail to allocate memory.
 
+## Reuse an existing Whisper Large V3 GGUF on macOS (no Hugging Face download)
+
+Handy desktop's GGUF model can be reused for Meeting Mode through an opt-in
+transcribe.cpp CLI backend. This does not download CTranslate2 weights.
+
+Build the official transcribe.cpp command-line tool once:
+
+```bash
+cd ~/Projects/Handy/server
+brew install cmake
+mkdir -p tools models
+git clone --depth 1 https://github.com/handy-computer/transcribe.cpp.git tools/transcribe.cpp
+cmake -S tools/transcribe.cpp -B tools/transcribe.cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build tools/transcribe.cpp/build --target transcribe-cli -j 4
+```
+
+Locate the already downloaded model in the shared HF cache and link it,
+without duplicating the model data:
+
+```bash
+cd ~/Projects/Handy/server
+CACHE="$HOME/.cache/huggingface/hub/models--handy-computer--whisper-large-v3-gguf/snapshots"
+MODEL="$(find -L "$CACHE" -name 'whisper-large-v3-Q5_K_M.gguf' -type f -print -quit)"
+test -n "$MODEL" && test -s "$MODEL"
+if [ ! -e models/whisper-large-v3-Q5_K_M.gguf ] && [ ! -L models/whisper-large-v3-Q5_K_M.gguf ]; then
+  ln -s "$MODEL" models/whisper-large-v3-Q5_K_M.gguf
+fi
+ls -lhL models/whisper-large-v3-Q5_K_M.gguf
+```
+
+Start only one Uvicorn process on 127.0.0.1:8765. Keep existing
+HANDY_API_KEY and HANDY_DB_PATH from the local server setup:
+
+```bash
+source .venv/bin/activate
+export HANDY_ASR_ENABLED=true
+export HANDY_ASR_BACKEND=gguf_cli
+export HANDY_GGUF_MODEL_PATH="$PWD/models/whisper-large-v3-Q5_K_M.gguf"
+export HANDY_TRANSCRIBE_CLI_PATH="$PWD/tools/transcribe.cpp/build/bin/transcribe-cli"
+export HANDY_GGUF_COMPUTE_BACKEND=auto
+export HANDY_LLM_ENABLED=true
+export HANDY_QWEN_PROVIDER=ollama
+export HANDY_QWEN_BASE_URL=http://127.0.0.1:11434/v1
+export HANDY_QWEN_MODEL=qwen3.5:9b
+export HANDY_QWEN_API_KEY=ollama
+python -m uvicorn handy_server.main:app --host 127.0.0.1 --port 8765 --workers 1
+```
+
+The server verifies the executable and model with a synthetic short WAV
+on startup before reporting ready status; there is no HF request.
+Test /v1/models/status and a short recorded meeting to confirm actual inference.
+The CLI must support --batch, --batch-jsonl and --timestamps segment.
+
+This opt-in integration starts a fresh CLI per 30-second meeting window and
+reloads the memory-mapped GGUF on each call. It is suitable for initial
+end-to-end testing, not yet a persistent inference worker or a proven
+20-hour unattended session. Meeting WAV is 16 kHz mono PCM16. Other formats
+may need conversion externally. Diarization remains a separate optional model.
+The faster-whisper backend remains the default for a GPU server.
+The model in server/models is a symlink; do not commit weight files to Git.
+
 ## Endpoints
 
 - `GET /health` — liveness only.
