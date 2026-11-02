@@ -42,6 +42,7 @@ class Settings:
     asr_device: str = "cuda"
     asr_compute_type: str = "float16"
     asr_backend: str = "faster_whisper"
+    native_handy_path: Path | None = None
     gguf_model_path: Path | None = None
     gguf_model_dir: Path | None = None
     transcribe_cli_path: Path | None = None
@@ -86,6 +87,8 @@ class Settings:
             asr_device=os.getenv("HANDY_ASR_DEVICE", "cuda"),
             asr_compute_type=os.getenv("HANDY_ASR_COMPUTE_TYPE", "float16"),
             asr_backend=os.getenv("HANDY_ASR_BACKEND", "faster_whisper").strip().lower(),
+            native_handy_path=Path(os.environ["HANDY_NATIVE_ASR_EXECUTABLE"]).expanduser()
+                if os.environ.get("HANDY_NATIVE_ASR_EXECUTABLE") else None,
             gguf_model_dir=Path(os.environ["HANDY_GGUF_MODEL_DIR"]).expanduser()
             if os.environ.get("HANDY_GGUF_MODEL_DIR") else None,
             gguf_model_path=Path(os.environ["HANDY_GGUF_MODEL_PATH"]).expanduser()
@@ -110,10 +113,13 @@ class Settings:
         )
         if settings.qwen_provider not in {"auto", "ollama", "vllm"}:
             raise ValueError("HANDY_QWEN_PROVIDER must be auto, ollama or vllm")
-        if settings.asr_backend not in {"faster_whisper", "gguf_cli"}:
-            raise ValueError("HANDY_ASR_BACKEND must be faster_whisper or gguf_cli")
+        if settings.asr_backend not in {"faster_whisper", "gguf_cli", "native_handy"}:
+            raise ValueError("HANDY_ASR_BACKEND must be faster_whisper, gguf_cli or native_handy")
         if settings.gguf_compute_backend not in {"auto", "cpu", "metal"}:
             raise ValueError("HANDY_GGUF_COMPUTE_BACKEND must be auto, cpu or metal")
+        if settings.asr_backend == "native_handy" and settings.asr_enabled:
+            if not settings.native_handy_path:
+                raise ValueError("Native Handy ASR requires HANDY_NATIVE_ASR_EXECUTABLE")
         if settings.asr_backend == "gguf_cli" and settings.asr_enabled:
             if not settings.gguf_model_path or not settings.transcribe_cli_path:
                 raise ValueError("GGUF ASR requires HANDY_GGUF_MODEL_PATH and HANDY_TRANSCRIBE_CLI_PATH")
