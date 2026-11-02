@@ -36,7 +36,11 @@ export HANDY_API_KEY="$(cat "$KEY_FILE")"
 export HANDY_DB_PATH="$SERVER_DIR/data/handy.sqlite3"
 
 export HANDY_ASR_ENABLED=true
-export HANDY_ASR_BACKEND=gguf_cli
+# Native Handy uses exactly the desktop TranscriptionManager (the same
+# language selection, long-form chunking, custom words and text normalization).
+# The API starts before Cargo compiles, so the executable is checked per job.
+export HANDY_ASR_BACKEND=native_handy
+export HANDY_NATIVE_ASR_EXECUTABLE="${HANDY_NATIVE_ASR_EXECUTABLE:-$SERVER_DIR/../src-tauri/target/debug/handy}"
 export HANDY_GGUF_MODEL_DIR="${HANDY_MEETING_MODEL_DIR:-$SERVER_DIR/data/asr-models}"
 export HANDY_GGUF_MODEL_PATH="$MODEL"
 export HANDY_TRANSCRIBE_CLI_PATH="$CLI"
@@ -48,6 +52,6 @@ export HANDY_QWEN_BASE_URL="http://127.0.0.1:11434/v1"
 export HANDY_QWEN_MODEL="qwen3.5:9b"
 export HANDY_QWEN_API_KEY="ollama"
 
-echo "Starting Handy API: local GGUF Whisper + Ollama Qwen on 127.0.0.1:8765"
+echo "Starting Handy API: desktop-native ASR + Ollama Qwen on 127.0.0.1:8765"
 exec "$PYTHON" -m uvicorn handy_server.main:app \
   --host 127.0.0.1 --port 8765 --workers 1
