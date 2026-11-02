@@ -561,8 +561,8 @@ export function NotesMode() {
                   className="border border-line bg-background rounded-lg px-2 py-1"
                 >
                   <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
-                  <option value="fa">فارسی (Persian)</option>
-                  <option value="en">English</option>
+                  <option value="fa">{t("meeting.persianLanguage", { defaultValue: "فارسی (Persian)" })}</option>
+                  <option value="en">{t("meeting.englishLanguage", { defaultValue: "English" })}</option>
                 </select>
               </label>
             )}
