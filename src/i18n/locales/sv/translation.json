@@ -1125,7 +1125,7 @@
     },
     "since": "From date",
     "until": "Until date",
-    "dateNotice": "Optional date filters use the server's UTC document creation dates; dates are not inferred from your question.",
+    "dateNotice": "Dates use the UTC creation date. Phrases such as “last week”, “this week”, “today” and “yesterday” are recognized when no manual date filters are set.",
     "ask": "Ask with Qwen",
     "searchOnly": "Find sources without AI",
     "working": "Searching…",
@@ -1139,6 +1139,7 @@
     "note": "Note",
     "review": "AI citations confirm that a source exists, not that the conclusion is necessarily correct. Review quotes before acting.",
     "dateError": "Start date must not exceed end date.",
-    "requestError": "Memory search failed"
+    "requestError": "Memory search failed",
+    "appliedPeriod": "Search period (UTC)"
   }
 }
