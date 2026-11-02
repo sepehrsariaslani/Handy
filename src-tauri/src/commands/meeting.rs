@@ -374,10 +374,7 @@ pub fn list_meetings(
 #[specta::specta]
 pub fn get_local_ai_api_key(server_url: String) -> Option<String> {
     let url = reqwest::Url::parse(&server_url).ok()?;
-    let loopback = matches!(
-        url.host_str(),
-        Some("localhost" | "127.0.0.1" | "::1")
-    );
+    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
     if url.scheme() != "http"
         || !loopback
         || url.port_or_known_default() != Some(8765)
