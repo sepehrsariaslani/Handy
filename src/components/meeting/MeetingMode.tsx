@@ -752,7 +752,7 @@ export const MeetingMode = () => {
                 className="text-sm whitespace-pre-wrap leading-relaxed"
               >
                 {(polishedParts.length ? polishedParts : [job.clean_text]).join(
-                  "\\n\\n",
+                  "\n\n",
                 )}
               </p>
               {(polishedParts.length === 0 ||
