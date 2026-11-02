@@ -3,6 +3,8 @@ import type {
   AiCleanupRequest,
   AiCleanupResponse,
   AiModelStatus,
+  AiNote,
+  AiNotesPage,
   AiSession,
   AiSessionCreate,
   AiTone,
@@ -109,4 +111,53 @@ export class HandyAiClient {
     if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid session ID");
     return this.request<AiSession>("/v1/sessions/" + id);
   }
+  listNotes(query = "", offset = 0, limit = 25): Promise<AiNotesPage> {
+    const params = new URLSearchParams({
+      q: query,
+      offset: String(offset),
+      limit: String(limit),
+    });
+    return this.request<AiNotesPage>("/v1/notes?" + params.toString());
+  }
+
+  getNote(id: string): Promise<AiNote> {
+    if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid note ID");
+    return this.request<AiNote>("/v1/notes/" + id);
+  }
+
+  createNote(title: string, content: string): Promise<AiNote> {
+    return this.request<AiNote>("/v1/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, content }),
+    });
+  }
+
+  updateNote(note: AiNote, title: string, content: string): Promise<AiNote> {
+    return this.request<AiNote>("/v1/notes/" + note.id, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, content, version: note.version }),
+    });
+  }
+
+  analyzeNote(id: string): Promise<AiNote> {
+    if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid note ID");
+    return this.request<AiNote>("/v1/notes/" + id + "/analyze", {
+      method: "POST",
+    });
+  }
+
+  importMeetingNote(jobId: string): Promise<AiNote> {
+    if (!/^[0-9a-f]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
+    return this.request<AiNote>("/v1/notes/from-meeting/" + jobId, {
+      method: "POST",
+    });
+  }
+
+  deleteNote(id: string): Promise<void> {
+    if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid note ID");
+    return this.request<void>("/v1/notes/" + id, { method: "DELETE" });
+  }
+
 }

@@ -97,3 +97,34 @@ export interface AiTranscriptionResponse {
   cleanup: AiCleanupResponse | null;
   elapsed_ms: number;
 }
+
+
+/** Phase-6 durable, single-tenant note with source provenance. */
+export interface AiNoteSource {
+  id: string;
+  text: string;
+}
+export interface AiNote {
+  id: string;
+  title: string;
+  content: string;
+  source_meeting_id: string | null;
+  analysis: NotesAnalysis | null;
+  sources: AiNoteSource[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface AiNoteSummary {
+  id: string;
+  title: string;
+  preview: string;
+  source_meeting_id: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface AiNotesPage {
+  items: AiNoteSummary[];
+  total: number;
+}
