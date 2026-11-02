@@ -59,7 +59,10 @@ export function LiveMode() {
         apiKey,
         { language, tone, cleanup },
         {
-          state: setPhase,
+          state: (nextPhase) => {
+            setPhase(nextPhase);
+            if (nextPhase === "completed") setSavedSession(null);
+          },
           result: (record) =>
             setResults((all) => ({ ...all, [record.sequence]: record })),
           partial: setPartial,

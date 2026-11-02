@@ -200,7 +200,9 @@ export class LiveStreamSession {
         );
       }
       this.next = Math.max(this.next, state.next_sequence);
-      void this.restoreHistory();
+      void this.restoreHistory().catch((error) =>
+        this.callbacks.error(String(error)),
+      );
     }
     this.connect();
     const capture = new LiveAudioCapture((audio) => this.enqueue(audio));

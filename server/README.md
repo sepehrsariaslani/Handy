@@ -1,4 +1,4 @@
-# Handy AI Server — Phase 2
+# Handy AI Server — Phases 2–3
 
 Handy now has an authenticated non-streaming transcription API backed by
 **Whisper Large V3** (faster-whisper/CTranslate2), plus a text cleanup API
@@ -117,3 +117,65 @@ pip install -e '.[dev]'
 pytest -q
 python benchmarks/measure_api.py
 ```
+
+
+## Phase 3 — live, resumable dictation
+
+The Handy sidebar now has an **opt-in Live** page. Enter the server URL and
+the single-tenant bearer token, agree to microphone processing, and start.
+The desktop's original global shortcut and offline transcription remain
+unchanged. This is not yet system-wide live typing/paste (phase 4).
+
+The client captures microphone audio with an AudioWorklet (ScriptProcessor
+fallback), downsamples to 16 kHz mono PCM16 and sends *new*, non-overlapping
+1–5-second chunks at voice pauses or the five-second boundary. The server
+prepends up to 0.6 seconds of *previous* persisted PCM as recognition context,
+then removes matching repeated words before finalizing the segment. Partial
+raw text is emitted when Whisper finishes a chunk, followed by a final
+committed segment after optional Qwen editing. This is chunked Whisper, not
+true token-level Whisper streaming.
+
+### WebSocket v1 contract
+
+1. Create an authenticated dictation session with `POST /v1/sessions`.
+2. Open `ws(s)://HOST/v1/stream/{session_id}`. For remote endpoints use WSS.
+3. Send `{"type":"hello","token":"...","language":"fa","tone":"professional","cleanup":true,"last_seen":-1}`
+   as the **first WebSocket JSON message**. Never put the token in a URL.
+4. Server sends `{"type":"ready","next_sequence":0,"pending_sequence":null,"committed_count":0,"results":[]}`.
+5. Send JSON metadata `{"type":"chunk","sequence":0,"encoding":"pcm_s16le","sample_rate":16000}`
+   immediately followed by one **binary** PCM chunk (mono signed 16-bit little-endian).
+   The server replies with an `ack` once the bytes are durable, a `partial`
+   when raw ASR finishes, then a `final` after the commit. Never discard your
+   local chunk on ACK alone.
+6. After a disconnect, reopen the same session and retransmit unfinalized
+   sequences. Identical retransmits are idempotent; changed bytes with the
+   same sequence are rejected. Out-of-order chunks receive `resync`.
+7. On stop, send `{"type":"finish"}` **after every locally queued chunk is final**.
+   The server transitions the session to `completed`.
+8. `GET /v1/sessions/{id}/stream-state?after_sequence=-1&limit=100`
+   returns paginated final results and the first pending sequence.
+
+Accepted audio is fsynced as PCM files beside the SQLite database; final
+segments (including raw and edited text) are persisted in SQLite. Each chunk
+is between 0.1–6 seconds; cumulative PCM duration is limited to 20 hours
+per session. There is currently no automated garbage collection/retention.
+Plan disk headroom of at least 2.3 GB per 20-hour session, plus temporary
+files and SQLite. **WebView/IndexedDB storage quotas may prevent a reliable
+20-hour continuous unattended recording.** Production long-form sessions
+should use the native Rust recorder and resumable upload pipeline.
+
+### Before deploying
+
+- HTTPS/WSS and an authenticated private server (do not expose Uvicorn
+  plaintext or vLLM).
+- Whisper Large V3 on the GPU; `/v1/capabilities.processing.streaming`
+  becomes true **only when ASR is actually loaded**.
+- Check WebView microphone permissions on the target macOS/Windows build.
+- Verify reconnection, device sleep, disk pressure and low-bandwidth behavior
+  on a real client. CI uses mocks; real audio accuracy and 20-hour endurance
+  have not been hardware-tested.
+- Multi-worker FastAPI deployment needs a shared distributed session lock;
+  the current WebSocket per-session lock is **per-process**, and this release
+  supports only a single API process per server.
+
+Run `cd server && python -m pytest -q` for protocol regression tests.

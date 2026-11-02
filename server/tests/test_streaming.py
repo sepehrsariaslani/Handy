@@ -24,6 +24,7 @@ class StreamingASR:
 
     def __init__(self):
         self.calls = 0
+        self.fail_once = False
 
     def initialize(self):
         pass
@@ -31,6 +32,10 @@ class StreamingASR:
     def transcribe_file(self, path: Path, language):
         import wave
         self.calls += 1
+        if self.fail_once:
+            from handy_server.workers import WorkerFailure
+            self.fail_once = False
+            raise WorkerFailure("Synthetic inference interruption")
         with wave.open(str(path), "rb") as wav:
             assert wav.getframerate() == 16000
             assert wav.getnchannels() == 1
@@ -178,3 +183,35 @@ def test_deduplication_is_conservative():
     assert deduplicate("جلسه ساعت ۱۲", "ساعت 12 شروع شد") == "شروع شد"
     assert deduplicate("بودجه ۱۲۵۰ تومان", "هزینه ۱۲۶۰ تومان") == "هزینه ۱۲۶۰ تومان"
     assert deduplicate("تست", "تست") == ""
+
+
+def test_durable_uncommitted_audio_retries_after_server_restart(tmp_path):
+    config = Settings(api_key=KEY, db_path=tmp_path / "persistent.db")
+    failing = StreamingASR()
+    failing.fail_once = True
+    runtime = InferenceRuntime(config, asr=failing, llm=StreamingLLM())
+    with TestClient(create_app(config, runtime=runtime)) as first:
+        session_id = first.post("/v1/sessions", json={"mode": "dictation"}, headers=AUTH).json()["id"]
+        with first.websocket_connect("/v1/stream/" + session_id) as ws:
+            ws.send_json({"type": "hello", "token": KEY})
+            assert ws.receive_json()["type"] == "ready"
+            chunk(ws, 0)
+            assert ws.receive_json()["type"] == "ack"
+            assert ws.receive_json()["reason"] == "inference_failed"
+        state = first.get("/v1/sessions/" + session_id + "/stream-state", headers=AUTH).json()
+        assert state["pending_sequence"] == 0
+        assert state["next_sequence"] == 0
+        assert not state["results"]
+    # A completely new app process can pick up the persisted PCM chunk.
+    working = StreamingASR()
+    with TestClient(create_app(config, runtime=InferenceRuntime(config, asr=working, llm=StreamingLLM()))) as second:
+        with second.websocket_connect("/v1/stream/" + session_id) as resumed:
+            resumed.send_json({"type": "hello", "token": KEY})
+            assert resumed.receive_json()["next_sequence"] == 0
+            chunk(resumed, 0)
+            assert resumed.receive_json() == {"type": "ack", "sequence": 0, "duplicate": True}
+            assert resumed.receive_json()["type"] == "partial"
+            assert resumed.receive_json()["type"] == "final"
+            assert working.calls == 1
+            resumed.send_json({"type": "finish"})
+            assert resumed.receive_json()["type"] == "complete"

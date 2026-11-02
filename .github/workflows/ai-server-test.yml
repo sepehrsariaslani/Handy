@@ -1,15 +1,19 @@
-name: AI server phase 1
+name: AI server and streaming regression
 
 on:
   push:
     paths:
       - "server/**"
       - "src/lib/ai/**"
+      - "src/components/live/**"
+      - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
   pull_request:
     paths:
       - "server/**"
       - "src/lib/ai/**"
+      - "src/components/live/**"
+      - "src/components/Sidebar.tsx"
       - ".github/workflows/ai-server-test.yml"
 
 jobs:
