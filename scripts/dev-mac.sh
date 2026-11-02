@@ -8,38 +8,27 @@ cd "$ROOT"
 
 bash scripts/link-dev-whisper-model.sh
 
-# Only recycle a Vite process proven to be from THIS repository.
-# This handles orphan dev servers such as node .../Handy/node_modules/.bin/vite
-# without killing arbitrary processes listening on port 1420.
+# Never kill an existing development server: it may belong to an active
+# Tauri session. Reuse Vite only if its command points at this checkout.
+REUSE_VITE=false
 VITE_PIDS="$(lsof -tiTCP:1420 -sTCP:LISTEN 2>/dev/null | sort -u || true)"
 if [[ -n "$VITE_PIDS" ]]; then
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
     command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
     if [[ "$command_line" != *"$ROOT/node_modules/.bin/vite"* ]]; then
-      echo "Port 1420 belongs to an unrelated process; refusing to stop it:" >&2
+      echo "Port 1420 belongs to a different process; refusing to interfere:" >&2
       ps -p "$pid" -o pid,command >&2 || true
       exit 1
     fi
   done <<< "$VITE_PIDS"
 
-  while IFS= read -r pid; do
-    [[ -z "$pid" ]] && continue
-    echo "[Handy Dev] Stopping leftover Vite from this project (PID $pid)."
-    kill "$pid" 2>/dev/null || true
-  done <<< "$VITE_PIDS"
-
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if ! lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
-  if lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Port 1420 is still occupied. No additional process was terminated." >&2
-    lsof -nP -iTCP:1420 -sTCP:LISTEN >&2
+  if ! curl -fsS --max-time 3 http://localhost:1420/ >/dev/null 2>&1; then
+    echo "The existing Handy Vite server is not responding. Stop its terminal first." >&2
     exit 1
   fi
+  REUSE_VITE=true
+  echo "[Handy Dev] Reusing existing Handy Vite on port 1420 (no process killed)."
 fi
 
 KEY_FILE="$HOME/.config/handy/local-api-key"
@@ -105,4 +94,11 @@ if [[ -n "$BACKEND_PID" ]]; then
   echo "[Handy Dev] Local AI API is ready."
 fi
 
-bun tauri dev --config src-tauri/tauri.dev.conf.json
+if [[ "$REUSE_VITE" == true ]]; then
+  # Tauri's config overlays are merged in order. Disabling the default
+  # beforeDevCommand avoids starting a second Vite on the same port.
+  bun tauri dev --config src-tauri/tauri.dev.conf.json \
+    --config '{"build":{"beforeDevCommand":null}}'
+else
+  bun tauri dev --config src-tauri/tauri.dev.conf.json
+fi
