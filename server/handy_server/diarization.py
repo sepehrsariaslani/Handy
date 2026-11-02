@@ -192,7 +192,12 @@ def speaker_at(start: float, end: float, turns: list[tuple[float, float, str]]) 
         return "Unknown"
     ordered = sorted(scores.items(), key=lambda row: row[1], reverse=True)
     # A large ASR window may contain multiple speakers. Do not invent certainty.
-    if len(ordered) > 1 and ordered[0][1] < 0.65 * sum(scores.values()):
+    if len(ordered) > 1 and (
+        ordered[0][1] < 0.65 * sum(scores.values())
+        or (end - start >= 8.0 and ordered[1][1] >= 1.0)
+    ):
+        # A 40-second block with ten seconds of another voice must not be
+        # attributed entirely to the dominant speaker.
         return "Unknown"
     return ordered[0][0]
 
