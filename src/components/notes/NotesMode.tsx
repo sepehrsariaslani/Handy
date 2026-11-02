@@ -25,7 +25,6 @@ import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { RecordingPill } from "@/components/ui/RecordingPill";
 
-
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
@@ -95,18 +94,26 @@ export function NotesMode() {
       if (active) unlisten = stop;
       else stop();
     });
-    void invoke<Array<{ id: string; kind: string; status: string }>>("list_meetings")
+    void invoke<Array<{ id: string; kind: string; status: string }>>(
+      "list_meetings",
+    )
       .then((rows) => {
         if (!active) return;
-        const pending = rows.find((item) => item.kind === "note" && item.status === "recording");
+        const pending = rows.find(
+          (item) => item.kind === "note" && item.status === "recording",
+        );
         if (pending) {
           setRecordingId(pending.id);
           setRecording(true);
           setLiveStatus("recording");
           setEditorExpanded(true);
         }
-      }).catch(() => undefined);
-    return () => { active = false; unlisten?.(); };
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -145,16 +152,25 @@ export function NotesMode() {
             const analyzed = await client.analyzeNote(saved.id);
             if (active) setNote(analyzed);
           } catch (error) {
-            if (active) toast.error(t("notes.analysisFailed"), { description: message(error) });
+            if (active)
+              toast.error(t("notes.analysisFailed"), {
+                description: message(error),
+              });
           }
         }
       } catch (error) {
-        if (active) toast.error("Recording sync", { description: message(error) });
+        if (active)
+          toast.error("Recording sync", { description: message(error) });
       }
     };
     void poll();
-    const timer = window.setInterval(() => { if (!finishing) void poll(); }, 4000);
-    return () => { active = false; window.clearInterval(timer); };
+    const timer = window.setInterval(() => {
+      if (!finishing) void poll();
+    }, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [jobId, client, serverUrl, authToken, loadList, t]);
 
   const select = async (id: string) => {
@@ -191,13 +207,17 @@ export function NotesMode() {
     setLiveStatus("recording");
     try {
       const info = await invoke<{ id: string }>("start_meeting", {
-        kind: "note", title: title.trim() || null, meetingDate: null,
+        kind: "note",
+        title: title.trim() || null,
+        meetingDate: null,
       });
       setRecordingId(info.id);
       setRecording(true);
     } catch (error) {
       setLiveStatus("failed");
-      toast.error("Cannot start note recording", { description: message(error) });
+      toast.error("Cannot start note recording", {
+        description: message(error),
+      });
     }
   };
 
@@ -210,7 +230,9 @@ export function NotesMode() {
       const info = await invoke<{ id: string }>("stop_meeting");
       setRecordingId(null);
       const job = await invoke<{ id: string }>("submit_meeting", {
-        id: info.id, serverUrl, apiKey: authToken,
+        id: info.id,
+        serverUrl,
+        apiKey: authToken,
       });
       setJobId(job.id);
     } catch (error) {

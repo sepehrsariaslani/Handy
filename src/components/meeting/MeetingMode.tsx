@@ -116,7 +116,9 @@ export const MeetingMode = () => {
   const refresh = useCallback(async () => {
     const result = await invoke<MeetingInfo[]>("list_meetings");
     setMeetings(result.filter((item) => item.kind !== "note"));
-    const active = result.filter((item) => item.kind !== "note").find((item) => item.status === "recording");
+    const active = result
+      .filter((item) => item.kind !== "note")
+      .find((item) => item.status === "recording");
     setCurrentId(active?.id ?? null);
     if (active) {
       setSelectedId((old) => old ?? active.id);
@@ -392,7 +394,11 @@ export const MeetingMode = () => {
     setPolishedLoading(true);
     try {
       const client = new HandyAiClient(serverUrl, authToken);
-      const result = await client.getCleanedTranscript(job.id, polishedParts.length, 10);
+      const result = await client.getCleanedTranscript(
+        job.id,
+        polishedParts.length,
+        10,
+      );
       setPolishedParts((current) => [...current, ...result.items]);
       setPolishedTotal(result.total);
     } catch (error) {
@@ -737,14 +743,26 @@ export const MeetingMode = () => {
           {job?.status === "completed" && job.clean_text && (
             <section className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">
-                {t("meeting.polishedTranscript", { defaultValue: "Clean transcript" })}
+                {t("meeting.polishedTranscript", {
+                  defaultValue: "Clean transcript",
+                })}
               </h3>
-              <p dir="auto" className="text-sm whitespace-pre-wrap leading-relaxed">
-                {(polishedParts.length ? polishedParts : [job.clean_text]).join("\\n\\n")}
+              <p
+                dir="auto"
+                className="text-sm whitespace-pre-wrap leading-relaxed"
+              >
+                {(polishedParts.length ? polishedParts : [job.clean_text]).join(
+                  "\\n\\n",
+                )}
               </p>
-              {(polishedParts.length === 0 || polishedParts.length < polishedTotal) && (
-                <button type="button" disabled={polishedLoading} onClick={() => void loadPolished()}
-                  className="w-fit text-sm border border-line rounded-lg px-3 py-2 disabled:opacity-50">
+              {(polishedParts.length === 0 ||
+                polishedParts.length < polishedTotal) && (
+                <button
+                  type="button"
+                  disabled={polishedLoading}
+                  onClick={() => void loadPolished()}
+                  className="w-fit text-sm border border-line rounded-lg px-3 py-2 disabled:opacity-50"
+                >
                   {t("meeting.showMore")}
                 </button>
               )}

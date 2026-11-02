@@ -156,11 +156,15 @@ export class HandyAiClient {
     return this.request<AiNote>("/v1/notes/by-recording/" + jobId);
   }
 
-  getCleanedTranscript(jobId: string, offset = 0, limit = 10):
-    Promise<{ items: string[]; offset: number; total: number }> {
+  getCleanedTranscript(
+    jobId: string,
+    offset = 0,
+    limit = 10,
+  ): Promise<{ items: string[]; offset: number; total: number }> {
     if (!/^[0-9a-f]{32}$/.test(jobId)) throw new Error("Invalid meeting ID");
-    return this.request("/v1/meetings/" + jobId + "/cleaned?offset=" +
-      offset + "&limit=" + limit);
+    return this.request(
+      "/v1/meetings/" + jobId + "/cleaned?offset=" + offset + "&limit=" + limit,
+    );
   }
 
   importMeetingNote(jobId: string): Promise<AiNote> {
