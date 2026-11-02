@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 asr = ["faster-whisper>=1.1,<2"]
 diarization = ["pyannote.audio>=4,<5"]
-alignment = ["whisperx>=3.5,<4"]
+alignment = ["whisperx>=3.8.4,<3.9"]
 semantic = ["sentence-transformers>=3,<6"]
 dev = ["pytest>=8,<10"]
 
