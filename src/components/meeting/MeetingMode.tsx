@@ -13,7 +13,11 @@ import {
   ListTodo,
 } from "lucide-react";
 import { toast } from "sonner";
-import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import {
+  LOCAL_AI_TEST_MODE,
+  loadServerUrl,
+  saveServerUrl,
+} from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { HandyAiClient } from "@/lib/ai/client";
 
@@ -438,6 +442,7 @@ export const MeetingMode = () => {
         <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
       </div>
 
+      {!LOCAL_AI_TEST_MODE && (
       <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
         <h2 className="font-semibold flex items-center gap-2">
           <Server size={17} />
@@ -475,6 +480,7 @@ export const MeetingMode = () => {
         </label>
         <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
       </div>
+      )}
 
       <section className="w-full flex flex-col gap-2">
         <h2 className="font-semibold flex items-center gap-2">
