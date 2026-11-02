@@ -44,6 +44,7 @@ class Settings:
     llm_enabled: bool = False
     qwen_base_url: str = "http://127.0.0.1:8000/v1"
     qwen_model: str = "Qwen/Qwen3.5-9B"
+    qwen_provider: str = "auto"
     qwen_api_key: str = "EMPTY"
     max_audio_bytes: int = 25 * 1024 * 1024
     max_text_chars: int = 12000
@@ -82,6 +83,7 @@ class Settings:
             llm_enabled=enabled("HANDY_LLM_ENABLED"),
             qwen_base_url=os.getenv("HANDY_QWEN_BASE_URL", "http://127.0.0.1:8000/v1"),
             qwen_model=os.getenv("HANDY_QWEN_MODEL", "Qwen/Qwen3.5-9B"),
+            qwen_provider=os.getenv("HANDY_QWEN_PROVIDER", "auto").strip().lower(),
             qwen_api_key=os.getenv("HANDY_QWEN_API_KEY", "EMPTY"),
             max_audio_bytes=max_audio_bytes,
             max_text_chars=int(os.getenv("HANDY_MAX_TEXT_CHARS", "12000")),
@@ -93,6 +95,8 @@ class Settings:
             semantic_enabled=enabled("HANDY_SEMANTIC_ENABLED"),
             semantic_model=os.getenv("HANDY_SEMANTIC_MODEL", "intfloat/multilingual-e5-small"),
         )
+        if settings.qwen_provider not in {"auto", "ollama", "vllm"}:
+            raise ValueError("HANDY_QWEN_PROVIDER must be auto, ollama or vllm")
         if settings.asr_model != "large-v3":
             raise ValueError("Phase 2 ASR is pinned to Whisper large-v3")
         if settings.asr_device not in {"cuda", "cpu", "auto"}:
