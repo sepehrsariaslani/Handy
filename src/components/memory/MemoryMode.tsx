@@ -241,6 +241,12 @@ export function MemoryMode() {
       {result && (
         <section className="border border-line rounded-xl p-4 flex flex-col gap-4">
           <h2 className="font-semibold">{t("memory.result")}</h2>
+          {(result.applied_since || result.applied_until) && (
+            <p className="text-xs text-ink-3">
+              {t("memory.appliedPeriod")}:{" "}
+              {result.applied_since ?? "…"} — {result.applied_until ?? "…"}
+            </p>
+          )
           {result.status === "answered" && result.answer ? (
             <p className="text-sm leading-7 whitespace-pre-wrap" dir="auto">
               {result.answer}
