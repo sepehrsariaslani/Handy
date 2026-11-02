@@ -270,6 +270,11 @@ class NativeHandyWorker(GgufWhisperWorker):
     def _run_cli(self, audio_path: Path, language: str | None,
                  timeout: int = 300, model_id: str | None = None
                  ) -> tuple[list[TranscriptSegment], str | None]:
+        if not model_id:
+            # Pre-upgrade recordings have no pinned model. Preserve their
+            # original backend, rather than silently changing historic runs.
+            logger.info("asr.native.legacy_job using_original_gguf_backend")
+            return super()._run_cli(audio_path, language, timeout, model_id=None)
         self.selected_path(model_id)
         binary = self.settings.native_handy_path
         if binary is None or not binary.is_file() or not os.access(binary, os.X_OK):
