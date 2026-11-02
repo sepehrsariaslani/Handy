@@ -704,7 +704,7 @@ def test_word_alignment_native_windows_are_bounded_and_cover_last_sample():
 
 
 def test_pyannote_long_meeting_windows_match_voices_conservatively(tmp_path, monkeypatch):
-    import numpy as np
+    np = pytest.importorskip("numpy")
     from types import SimpleNamespace
     from handy_server import diarization
 
