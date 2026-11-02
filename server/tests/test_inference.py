@@ -154,3 +154,37 @@ def test_missing_model_is_unavailable(tmp_path):
 def test_no_insecure_external_qwen_url(url):
     with pytest.raises(ValueError):
         validate_llm_url(url)
+
+
+def test_whisper_adapter_loads_large_v3_and_iterates_generator(monkeypatch, tmp_path):
+    """Verify the CTranslate2-facing API without downloading gigabytes in CI."""
+    import sys
+    from types import SimpleNamespace
+    from handy_server.workers import WhisperWorker
+
+    seen = {}
+
+    class FakeLoadedModel:
+        def __init__(self, model_name, device, compute_type):
+            seen["load"] = (model_name, device, compute_type)
+
+        def transcribe(self, filename, **kwargs):
+            seen["options"] = kwargs
+            def entries():
+                yield SimpleNamespace(start=0.0, end=2.0, text="  سلام دنیا  ")
+            return entries(), SimpleNamespace(language="fa")
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=FakeLoadedModel))
+    settings = Settings(api_key=TOKEN, db_path=tmp_path / "x.db", asr_enabled=True)
+    worker = WhisperWorker(settings)
+    worker.initialize()
+    assert worker.ready
+    clip = tmp_path / "test.wav"
+    clip.write_bytes(b"RIFFfake")
+    segments, language = worker.transcribe_file(clip, "fa")
+    assert seen["load"] == ("large-v3", "cuda", "float16")
+    assert seen["options"]["language"] == "fa"
+    assert language == "fa"
+    assert len(segments) == 1
+    assert segments[0].raw_text == "سلام دنیا"
+    assert segments[0].start == 0 and segments[0].end == 2
