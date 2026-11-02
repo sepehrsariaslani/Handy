@@ -10,6 +10,7 @@ import {
   FileAudio,
   ClipboardList,
   BookOpenText,
+  ListTodo,
 } from "lucide-react";
 import { toast } from "sonner";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
@@ -235,6 +236,20 @@ export const MeetingMode = () => {
       toast.success(t("notes.imported"));
     } catch (error) {
       toast.error(t("notes.importFailed"), { description: readError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importAsTasks = async () => {
+    if (!job || job.status !== "completed" || !job.insights || !apiKey || busy) return;
+    setBusy(true);
+    try {
+      const client = new HandyAiClient(serverUrl, apiKey);
+      const imported = await client.importMeetingTasks(job.id);
+      toast.success(t("tasks.imported", { count: imported.created }));
+    } catch (error) {
+      toast.error(t("tasks.error"), { description: readError(error) });
     } finally {
       setBusy(false);
     }
@@ -550,6 +565,16 @@ export const MeetingMode = () => {
               className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
             >
               <BookOpenText size={16} /> {t("notes.importMeeting")}
+            </button>
+          )}
+          {job.status === "completed" && job.insights && (
+            <button
+              type="button"
+              disabled={busy || !apiKey}
+              onClick={() => void importAsTasks()}
+              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
+              <ListTodo size={16} /> {t("tasks.importMeeting")}
             </button>
           )}
           {job.insights && (
