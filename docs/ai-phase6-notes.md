@@ -64,7 +64,6 @@ This is **single-tenant**: one API key grants access to every note and meeting. 
 
 Tests: `cd server && python -m pytest -q`. Frontend: `bun run lint && bun run format:check && bun run build`.
 
-
 ## Ollama/Qwen diagnostics and Persian cleanup
 
 For an Ollama-hosted Qwen model use an exact model ID returned by Ollama,
