@@ -87,6 +87,7 @@ export const MeetingMode = () => {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDate, setDraftDate] = useState("");
+  const [speechLanguage, setSpeechLanguage] = useState("auto");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -273,6 +274,7 @@ export const MeetingMode = () => {
       const info = await invoke<MeetingInfo>("start_meeting", {
         title: draftTitle.trim() || null,
         meetingDate: draftDate || null,
+        language: speechLanguage === "auto" ? null : speechLanguage,
       });
       setSelectedId(info.id);
       setCurrentId(info.id);
@@ -303,7 +305,7 @@ export const MeetingMode = () => {
       }
       setUploading(true);
       resetResult();
-      setTranscriptOpen(true);
+      setTranscriptOpen(false);
       const result = await invoke<MeetingJob>("submit_meeting", {
         id: info.id,
         serverUrl,
@@ -636,6 +638,18 @@ export const MeetingMode = () => {
                   onChange={(event) => setDraftDate(event.target.value)}
                   className="border border-line bg-transparent rounded-lg px-3 py-2"
                 />
+              </label>
+              <label className="text-sm flex flex-col gap-1">
+                {t("meeting.speechLanguage", { defaultValue: "Recording language" })}
+                <select
+                  value={speechLanguage}
+                  onChange={(event) => setSpeechLanguage(event.target.value)}
+                  className="border border-line bg-background rounded-lg px-3 py-2"
+                >
+                  <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
+                  <option value="fa">فارسی (Persian)</option>
+                  <option value="en">English</option>
+                </select>
               </label>
             </div>
           ) : (
