@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   BookOpenText,
   Search,
@@ -22,7 +24,7 @@ import {
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 import { RecordingPill } from "@/components/ui/RecordingPill";
-import { LiveStreamSession } from "@/lib/ai/liveSession";
+
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -47,13 +49,11 @@ export function NotesMode() {
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [liveLevel, setLiveLevel] = useState(0);
-  const [livePartial, setLivePartial] = useState("");
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<
     "idle" | "recording" | "draining" | "saving" | "completed" | "failed"
   >("idle");
-  const liveSession = useRef<LiveStreamSession | null>(null);
-  const liveParts = useRef(new Map<number, string>());
-  const liveSaved = useRef(false);
   const liveBusy =
     recording || liveStatus === "draining" || liveStatus === "saving";
 
@@ -85,9 +85,77 @@ export function NotesMode() {
     return () => window.clearTimeout(timer);
   }, [loadList]);
 
+  // Durable WAV recording; Notes never use low-context live streaming.
   useEffect(() => {
-    return () => liveSession.current?.dispose();
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void listen<number>("meeting-audio-level", (event) => {
+      if (active) setLiveLevel(event.payload);
+    }).then((stop) => {
+      if (active) unlisten = stop;
+      else stop();
+    });
+    void invoke<Array<{ id: string; kind: string; status: string }>>("list_meetings")
+      .then((rows) => {
+        if (!active) return;
+        const pending = rows.find((item) => item.kind === "note" && item.status === "recording");
+        if (pending) {
+          setRecordingId(pending.id);
+          setRecording(true);
+          setLiveStatus("recording");
+          setEditorExpanded(true);
+        }
+      }).catch(() => undefined);
+    return () => { active = false; unlisten?.(); };
   }, []);
+
+  useEffect(() => {
+    if (!jobId || !client || !authToken) return;
+    let active = true;
+    let finishing = false;
+    const poll = async () => {
+      if (finishing) return;
+      try {
+        const job = await invoke<{
+          id: string;
+          status: "queued" | "processing" | "completed" | "failed";
+          error?: string | null;
+          generated_note_id?: string | null;
+        }>("get_meeting_job", { serverUrl, apiKey: authToken, jobId });
+        if (!active) return;
+        if (job.status === "failed") {
+          finishing = true;
+          setLiveStatus("failed");
+          toast.error(job.error || t("notes.voiceFailed"));
+        } else if (job.status === "completed") {
+          finishing = true;
+          if (!job.generated_note_id) {
+            setLiveStatus("failed");
+            toast.error("No speech was detected. The recording remains saved.");
+            return;
+          }
+          const saved = await client.getRecordedNote(job.id);
+          if (!active) return;
+          setNote(saved);
+          setTitle(saved.title);
+          setContent(saved.content);
+          setLiveStatus("completed");
+          await loadList();
+          try {
+            const analyzed = await client.analyzeNote(saved.id);
+            if (active) setNote(analyzed);
+          } catch (error) {
+            if (active) toast.error(t("notes.analysisFailed"), { description: message(error) });
+          }
+        }
+      } catch (error) {
+        if (active) toast.error("Recording sync", { description: message(error) });
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => { if (!finishing) void poll(); }, 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [jobId, client, serverUrl, authToken, loadList, t]);
 
   const select = async (id: string) => {
     if (!client || busy || liveBusy) return;
@@ -110,136 +178,44 @@ export function NotesMode() {
     setNote(null);
     setTitle("");
     setContent("");
-    setLivePartial("");
+    setJobId(null);
     setLiveStatus("idle");
     setEditorExpanded(true);
   };
 
   const startLiveNote = async () => {
     if (!client || busy || liveBusy) return;
-    const originalContent = content;
-    const originalNote = note;
-    const originalTitle = title;
     setEditorExpanded(true);
-    liveParts.current = new Map();
-    liveSaved.current = false;
-    setLivePartial("");
     setLiveLevel(0);
+    setJobId(null);
     setLiveStatus("recording");
-
-    const combined = () => {
-      const recorded = [...liveParts.current.entries()]
-        .sort(([left], [right]) => left - right)
-        .map(([, text]) => text)
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      return [originalContent.trim(), recorded].filter(Boolean).join("\n\n");
-    };
-
-    const finish = async () => {
-      if (liveSaved.current) return;
-      liveSaved.current = true;
-      setLiveStatus("saving");
-      const finalText = combined();
-      if (!finalText.trim() || finalText === originalContent.trim()) {
-        setLiveStatus("failed");
-        toast.error("No speech was detected. The note was not overwritten.");
-        return;
-      }
-      const noteTitle =
-        originalTitle.trim() ||
-        `Voice note ${new Date().toLocaleString("fa-IR")}`;
-      try {
-        const saved = originalNote
-          ? await client.updateNote(originalNote, noteTitle, finalText)
-          : await client.createNote(noteTitle, finalText);
-        setNote(saved);
-        setTitle(saved.title);
-        setContent(saved.content);
-        setLiveStatus("completed");
-        toast.success(t("notes.saved"));
-        await loadList();
-
-        // Streaming provides a cleaned transcript; after Stop Qwen also
-        // extracts organized note sections, key points and review questions.
-        try {
-          const analyzed = await client.analyzeNote(saved.id);
-          setNote(analyzed);
-          setLiveStatus("completed");
-        } catch (error) {
-          toast.error(t("notes.analysisFailed"), {
-            description: message(error),
-          });
-        }
-      } catch (error) {
-        setLiveStatus("failed");
-        toast.error(t("notes.saveFailed"), { description: message(error) });
-      }
-    };
-
-    const session = new LiveStreamSession(
-      serverUrl,
-      authToken,
-      {
-        mode: "note_taking",
-        language: "fa",
-        tone: "professional",
-        cleanup: true,
-      },
-      {
-        state: (state) => {
-          if (state === "completed") {
-            setRecording(false);
-            setLiveLevel(0);
-            void finish();
-          } else if (state === "draining" || state === "reconnecting") {
-            setLiveStatus("draining");
-          } else if (state === "recording") {
-            setLiveStatus("recording");
-          }
-        },
-        result: (result) => {
-          liveParts.current.set(
-            result.sequence,
-            (result.segment.clean_text || result.segment.raw_text).trim(),
-          );
-          setContent(combined());
-          setLivePartial("");
-        },
-        partial: setLivePartial,
-        level: setLiveLevel,
-        error: (error) => {
-          toast.error("Live transcription", { description: error });
-          setLiveStatus("failed");
-        },
-      },
-    );
-    liveSession.current = session;
     try {
-      await session.start();
+      const info = await invoke<{ id: string }>("start_meeting", {
+        kind: "note", title: title.trim() || null, meetingDate: null,
+      });
+      setRecordingId(info.id);
       setRecording(true);
     } catch (error) {
-      session.dispose();
-      liveSession.current = null;
-      setRecording(false);
       setLiveStatus("failed");
-      toast.error("Cannot start live recording", {
-        description: message(error),
-      });
+      toast.error("Cannot start note recording", { description: message(error) });
     }
   };
 
   const stopLiveNote = async () => {
-    if (!recording || !liveSession.current) return;
+    if (!recording || !recordingId) return;
     setRecording(false);
     setLiveLevel(0);
-    setLiveStatus("draining");
+    setLiveStatus("saving");
     try {
-      await liveSession.current.stop();
+      const info = await invoke<{ id: string }>("stop_meeting");
+      setRecordingId(null);
+      const job = await invoke<{ id: string }>("submit_meeting", {
+        id: info.id, serverUrl, apiKey: authToken,
+      });
+      setJobId(job.id);
     } catch (error) {
       setLiveStatus("failed");
-      toast.error("Cannot finalize live recording", {
+      toast.error("Note recording saved but processing did not start", {
         description: message(error),
       });
     }
@@ -496,7 +472,7 @@ export function NotesMode() {
               <RecordingPill
                 level={liveLevel}
                 onStop={() => void stopLiveNote()}
-                label="Live note recording"
+                label={t("notes.voiceTitle")}
               />
             ) : (
               <button
@@ -509,15 +485,6 @@ export function NotesMode() {
                 {t("notes.startVoice")}
               </button>
             )}
-            {livePartial && recording && (
-              <p className="text-sm text-ink-3" dir="auto">
-                {livePartial}
-                <span
-                  className="ms-1 inline-block h-4 w-0.5 animate-pulse bg-logo-primary"
-                  aria-hidden="true"
-                />
-              </p>
-            )}
             {liveStatus === "draining" && (
               <p className="text-sm text-ink-3" role="status">
                 {t("notes.voiceDraining")}
@@ -525,7 +492,7 @@ export function NotesMode() {
             )}
             {liveStatus === "saving" && (
               <p className="text-sm text-ink-3" role="status">
-                {t("notes.voiceSaving")}
+                {t("meeting.autoProcessing")}
               </p>
             )}
             {liveStatus === "completed" && (
