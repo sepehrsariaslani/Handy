@@ -230,7 +230,12 @@ class QwenWorker:
                 response.raise_for_status()
                 models = response.json().get("data", [])
                 ok = any(item.get("id") == self.settings.qwen_model for item in models)
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError):
+                
+            if not ok:
+                logger.warning("qwen.model_not_found provider=%s requested=%s available_count=%d",
+                               self.settings.qwen_provider, self.settings.qwen_model, len(models))
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError) as exc:
+            logger.warning("qwen.unavailable provider=%s error=%s", self.settings.qwen_provider, type(exc).__name__)
             ok = False
         self._ready_cached = ok
         self._checked_at = monotonic()
@@ -242,6 +247,61 @@ class QwenWorker:
         # The official Ollama localhost API uses port 11434; allow an explicit
         # override for non-standard ports via HANDY_QWEN_PROVIDER.
         return urlsplit(self.settings.qwen_base_url).port == 11434
+
+    async def structured(self, messages: list[dict], *, max_tokens: int, operation: str) -> dict:
+        """One provider-aware JSON endpoint for meeting and note analysis.
+
+        Logging intentionally excludes audio, prompts, model output and credentials.
+        """
+        if not await self.ready():
+            raise WorkerUnavailable("Qwen model is not ready; check provider and model ID")
+        ollama = self._is_ollama()
+        payload = {
+            "model": self.settings.qwen_model,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "response_format": {"type": "json_object"},
+        }
+        if ollama:
+            payload["reasoning_effort"] = "none"
+        else:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        started = monotonic()
+        provider = "ollama" if ollama else "vllm"
+        logger.info("qwen.start operation=%s provider=%s model=%s", operation, provider, self.settings.qwen_model)
+        try:
+            async with httpx.AsyncClient(
+                transport=self._transport,
+                timeout=httpx.Timeout(240.0 if ollama else 120.0, connect=5.0),
+                follow_redirects=False,
+            ) as client:
+                response = await client.post(
+                    validate_llm_url(self.settings.qwen_base_url) + "/chat/completions",
+                    headers={"Authorization": "Bearer " + self.settings.qwen_api_key},
+                    json=payload,
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+                if not isinstance(content, str) or "<think>" in content or "</think>" in content:
+                    raise ValueError("Invalid model output")
+                result = json.loads(content)
+                if not isinstance(result, dict):
+                    raise ValueError("Expected JSON object")
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, IndexError) as exc:
+            response = getattr(exc, "response", None)
+            logger.warning(
+                "qwen.failed operation=%s provider=%s error=%s http_status=%s elapsed_ms=%d",
+                operation, provider, type(exc).__name__,
+                getattr(response, "status_code", None), int((monotonic()-started)*1000),
+            )
+            raise WorkerFailure(f"Qwen {operation} failed ({type(exc).__name__})") from None
+        logger.info(
+            "qwen.completed operation=%s provider=%s elapsed_ms=%d",
+            operation, provider, int((monotonic()-started)*1000),
+        )
+        return result
 
     async def cleanup(self, body: CleanupRequest) -> CleanupResponse:
         if len(body.text) > self.settings.max_text_chars:
@@ -265,6 +325,9 @@ class QwenWorker:
         else:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         base = validate_llm_url(self.settings.qwen_base_url)
+        started = monotonic()
+        logger.info("qwen.start operation=cleanup provider=%s model=%s chars=%d",
+                    "ollama" if ollama else "vllm", self.settings.qwen_model, len(body.text))
         try:
             async with httpx.AsyncClient(
                 transport=self._transport, timeout=httpx.Timeout(240.0 if ollama else 90.0, connect=5.0), follow_redirects=False
@@ -287,7 +350,11 @@ class QwenWorker:
                 getattr(response, "status_code", None),
             )
             raise WorkerFailure(f"Qwen inference failed ({type(exc).__name__})") from None
+        logger.info("qwen.completed operation=cleanup provider=%s elapsed_ms=%d",
+                    "ollama" if ollama else "vllm", int((monotonic()-started)*1000))
         warnings = protect_source(body.text, edited, body.protected_terms)
+        if edited.lstrip().startswith("{") and edited.rstrip().endswith("}"):
+            warnings.append("Unexpected JSON in edited transcript; original text returned")
         # Reasoning must never appear in the displayed transcript.
         if "<think>" in edited or "</think>" in edited:
             warnings.append("Unexpected reasoning output; original text returned")
