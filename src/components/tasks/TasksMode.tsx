@@ -17,6 +17,7 @@ import {
   saveServerUrl,
 } from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
+import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 
 const toError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -151,6 +152,8 @@ export function TasksMode() {
         </h1>
         <p className="text-sm text-ink-3 mt-1">{t("tasks.intro")}</p>
       </header>
+
+      {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
       {!LOCAL_AI_TEST_MODE && (
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
