@@ -178,10 +178,32 @@ pub fn start_meeting(
         remote_server_url: None,
     };
     let sink = MeetingWavSink::open(&audio_path)?;
+    let settings = crate::settings::get_settings(&app);
+    let requested_mic = if settings.clamshell_microphone.is_some()
+        && crate::helpers::clamshell::is_clamshell().unwrap_or(false)
+    {
+        settings.clamshell_microphone.clone()
+    } else {
+        settings.selected_microphone.clone()
+    };
+    let device = match requested_mic {
+        Some(name) => {
+            let devices = handy_recorder::list_input_devices()
+                .map_err(|e| format!("Cannot enumerate microphones: {e}"))?;
+            Some(
+                devices
+                    .into_iter()
+                    .find(|item| item.name == name)
+                    .map(|item| item.id)
+                    .ok_or_else(|| format!("Selected microphone is unavailable: {name}"))?,
+            )
+        }
+        None => None,
+    };
     let recorder = Recorder::open_with_failure_handler(
         RecorderConfig {
-            device: None,
-            channels: Channels::MixToMono,
+            device,
+            channels: settings.selected_channel.map_or(Channels::MixToMono, Channels::Only),
             frames_per_chunk: Some(1024),
             ..RecorderConfig::speech()
         },

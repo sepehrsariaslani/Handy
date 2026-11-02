@@ -35,7 +35,7 @@ Use `http://127.0.0.1:8765` in the Meeting tab for a local service. For a differ
 
 - The current service has **one in-process worker** (durable job metadata and retry after restart, but not a distributed task queue). A 20-hour file is ~2.3 GB as WAV, and requires significant time, storage, compute, and upload bandwidth. Max upload defaults to 3 GiB. Full-file pyannote diarization is computationally expensive and may need a high-memory GPU or a scalable segmentation/identity-stitching service for very long recordings.
 - Recording writes WAV to disk with periodic flushes; a sudden power loss may require WAV header recovery. Disk full and capture failures are surfaced on Stop. Keep the app running until Stop.
-- The desktop uses the OS default microphone in this first version. Use dedicated audio input if needed; desktop system sound/remote speakers are **not** captured automatically.
+- Recording uses Handy's selected microphone/channel (or the OS default if no microphone is selected). Desktop system sound/remote speakers are **not** captured automatically.
 - The model assigns provisional labels such as `SPEAKER_00`, **not personal identities**. A user must verify speakers, assignments, and deadlines before relying on output.
 - Language auto-detection in mixed-language sessions, overlapping speakers, and timestamps can be inaccurate.
 - No mobile client, always-on daily capture, global long-term memory search, or automatic todo sync is shipped by this change.
