@@ -67,6 +67,12 @@ pub struct MeetingState {
     active: Mutex<Option<ActiveMeeting>>,
 }
 
+impl MeetingState {
+    pub fn is_active(&self) -> bool {
+        self.active.lock().map(|meeting| meeting.is_some()).unwrap_or(false)
+    }
+}
+
 /// Writes straight to disk: a 20-hour session never builds up a Vec<f32>.
 /// WAV headers are periodically flushed to reduce loss on an unclean exit.
 struct MeetingWavSink {
@@ -166,6 +172,8 @@ pub fn start_meeting(
         audio_path: audio_path.to_string_lossy().to_string(),
         bytes: 0,
         status: "recording".to_owned(),
+        remote_job_id: None,
+        remote_server_url: None,
     };
     let sink = MeetingWavSink::open(&audio_path)?;
     let recorder = Recorder::open_with_failure_handler(
@@ -291,7 +299,7 @@ pub async fn submit_meeting(
         return Err("Invalid meeting ID".into());
     }
     let directory = meeting_dir(&app)?.join(&id);
-    let info = get_info(&directory)?;
+    let mut info = get_info(&directory)?;
     if info.status != "ready" {
         return Err("Stop the recording successfully before uploading".into());
     }
@@ -311,7 +319,11 @@ pub async fn submit_meeting(
     if !status.is_success() {
         return Err(format!("Server rejected the audio ({status}): {body}"));
     }
-    serde_json::from_str::<MeetingJob>(&body).map_err(|e| e.to_string())
+    let job = serde_json::from_str::<MeetingJob>(&body).map_err(|e| e.to_string())?;
+    info.remote_job_id = Some(job.id.clone());
+    info.remote_server_url = Some(server_url);
+    write_info(&directory, &info)?;
+    Ok(job)
 }
 
 #[tauri::command]

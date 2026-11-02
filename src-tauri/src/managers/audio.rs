@@ -1015,6 +1015,13 @@ impl AudioRecordingManager {
         binding_id: &str,
         vad_policy: VadPolicy,
     ) -> Result<RecordingReadiness, anyhow::Error> {
+        if self
+            .app_handle
+            .try_state::<crate::commands::meeting::MeetingState>()
+            .is_some_and(|meeting| meeting.is_active())
+        {
+            return Err(anyhow::anyhow!("Stop Meeting Mode before starting dictation"));
+        }
         let mut state = self.state.lock().unwrap();
         if !matches!(*state, RecordingState::Idle) {
             return Err(anyhow::anyhow!("Already recording"));

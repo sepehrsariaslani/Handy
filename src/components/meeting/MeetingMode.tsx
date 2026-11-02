@@ -10,6 +10,8 @@ type MeetingInfo = {
   audio_path: string;
   bytes: number;
   status: "recording" | "ready" | "incomplete" | "interrupted";
+  remote_job_id: string | null;
+  remote_server_url: string | null;
 };
 
 type Utterance = {
@@ -67,6 +69,7 @@ export const MeetingMode = () => {
   const [apiKey, setApiKey] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<MeetingJob | null>(null);
+  const [visibleCount, setVisibleCount] = useState(150);
 
   const refresh = useCallback(async () => {
     const result = await invoke<MeetingInfo[]>("list_meetings");
@@ -142,6 +145,7 @@ export const MeetingMode = () => {
     setBusy(true);
     setJobId(null);
     setJob(null);
+    setVisibleCount(150);
     try {
       const result = await invoke<MeetingJob>("submit_meeting", {
         id: meeting.id,
@@ -165,7 +169,11 @@ export const MeetingMode = () => {
           key={id}
           type="button"
           className="text-xs text-logo-primary underline"
-          onClick={() => document.getElementById("meeting-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+          onClick={() => {
+            const index = job?.transcript?.findIndex((segment) => segment.id === id) ?? -1;
+            if (index >= visibleCount) setVisibleCount(index + 1);
+            window.setTimeout(() => document.getElementById("meeting-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+          }}
         >
           {id}
         </button>
@@ -252,9 +260,18 @@ export const MeetingMode = () => {
               <p className="text-xs text-ink-3">{meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB</p>
               <p className="text-xs text-ink-3 break-all">{meeting.audio_path}</p>
             </div>
-            <button type="button" disabled={busy || meeting.status !== "ready"} onClick={() => void upload(meeting)}
+            <button type="button" disabled={busy || meeting.status !== "ready"} onClick={() => {
+              if (meeting.remote_job_id) {
+                setJob(null);
+                setVisibleCount(150);
+                setServerUrl(meeting.remote_server_url || serverUrl);
+                setJobId(meeting.remote_job_id);
+              } else {
+                void upload(meeting);
+              }
+            }}
               className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
-              <UploadCloud size={16} />{t("meeting.process")}
+              <UploadCloud size={16} />{meeting.remote_job_id ? t("meeting.resume") : t("meeting.process")}
             </button>
           </div>
         ))}
@@ -277,7 +294,7 @@ export const MeetingMode = () => {
             <details className="w-full" open={Boolean(job.error)}>
               <summary className="cursor-pointer font-semibold">{t("meeting.transcript")}</summary>
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
-                {job.transcript.map((item) => (
+                {job.transcript.slice(0, visibleCount).map((item) => (
                   <p key={item.id} id={"meeting-" + item.id} className="text-sm border-b border-line pb-2">
                     <span className="font-medium">{item.speaker}</span>
                     <span className="text-xs text-ink-3 ms-2">{formatTime(item.start)} · {item.id}</span>
@@ -285,6 +302,9 @@ export const MeetingMode = () => {
                   </p>
                 ))}
               </div>
+              {job.transcript.length > visibleCount && (
+                <button type="button" className="mt-3 px-3 py-2 rounded-lg border border-line text-sm" onClick={() => setVisibleCount((count) => count + 150)}>{t("meeting.showMore")}</button>
+              )}
             </details>
           )}
           <p className="text-xs text-ink-3">{t("meeting.review")}</p>
