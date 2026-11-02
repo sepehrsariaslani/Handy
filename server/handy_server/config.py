@@ -1,7 +1,30 @@
-"""Server configuration, loaded from the environment (never from the repository)."""
+"""Environment-only settings; secrets are never committed or returned to clients."""
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def enabled(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, str(default)).strip().lower()
+    if value not in {"true", "false", "1", "0", "yes", "no"}:
+        raise ValueError(f"{name} must be a boolean")
+    return value in {"true", "1", "yes"}
+
+
+def validate_llm_url(value: str) -> str:
+    parsed = urlsplit(value)
+    # qwen is an internal service name in the example Docker Compose network.
+    local_names = {"localhost", "127.0.0.1", "::1", "qwen"}
+    if parsed.scheme != "https" and not (
+        parsed.scheme == "http" and parsed.hostname in local_names
+    ):
+        raise ValueError("Qwen endpoint requires HTTPS outside loopback/Compose")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Qwen URL cannot contain credentials or tokens")
+    if parsed.path.rstrip("/") != "/v1":
+        raise ValueError("Qwen URL must end in /v1")
+    return value.rstrip("/")
 
 
 @dataclass(frozen=True)
@@ -14,6 +37,16 @@ class Settings:
         "https://tauri.localhost",
         "tauri://localhost",
     )
+    asr_enabled: bool = False
+    asr_model: str = "large-v3"
+    asr_device: str = "cuda"
+    asr_compute_type: str = "float16"
+    llm_enabled: bool = False
+    qwen_base_url: str = "http://127.0.0.1:8000/v1"
+    qwen_model: str = "Qwen/Qwen3.5-9B"
+    qwen_api_key: str = "EMPTY"
+    max_audio_bytes: int = 25 * 1024 * 1024
+    max_text_chars: int = 12000
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -28,8 +61,29 @@ class Settings:
         )
         if "*" in origins:
             raise RuntimeError("Wildcard CORS origins are not allowed")
-        return cls(
+        max_audio_bytes = int(os.getenv("HANDY_MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
+        if not 1024 <= max_audio_bytes <= 250 * 1024 * 1024:
+            raise ValueError("HANDY_MAX_AUDIO_BYTES outside supported range")
+        settings = cls(
             api_key=key,
             db_path=Path(os.getenv("HANDY_DB_PATH", "./data/handy.sqlite3")),
             cors_origins=origins,
+            asr_enabled=enabled("HANDY_ASR_ENABLED"),
+            asr_model=os.getenv("HANDY_ASR_MODEL", "large-v3"),
+            asr_device=os.getenv("HANDY_ASR_DEVICE", "cuda"),
+            asr_compute_type=os.getenv("HANDY_ASR_COMPUTE_TYPE", "float16"),
+            llm_enabled=enabled("HANDY_LLM_ENABLED"),
+            qwen_base_url=os.getenv("HANDY_QWEN_BASE_URL", "http://127.0.0.1:8000/v1"),
+            qwen_model=os.getenv("HANDY_QWEN_MODEL", "Qwen/Qwen3.5-9B"),
+            qwen_api_key=os.getenv("HANDY_QWEN_API_KEY", "EMPTY"),
+            max_audio_bytes=max_audio_bytes,
+            max_text_chars=int(os.getenv("HANDY_MAX_TEXT_CHARS", "12000")),
         )
+        if settings.asr_model != "large-v3":
+            raise ValueError("Phase 2 ASR is pinned to Whisper large-v3")
+        if settings.asr_device not in {"cuda", "cpu", "auto"}:
+            raise ValueError("Invalid HANDY_ASR_DEVICE")
+        if settings.max_text_chars < 100 or settings.max_text_chars > 50000:
+            raise ValueError("Invalid HANDY_MAX_TEXT_CHARS")
+        validate_llm_url(settings.qwen_base_url)
+        return settings

@@ -1,9 +1,9 @@
-"""Versioned shared API contracts; see src/lib/ai/contracts.ts."""
+"""Versioned shared API contracts; mirror in src/lib/ai/contracts.ts."""
 from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
@@ -50,6 +50,12 @@ class TranscriptSegment(StrictModel):
     clean_text: str | None = None
     final: bool = False
 
+    @model_validator(mode="after")
+    def valid_times(self):
+        if self.end < self.start:
+            raise ValueError("Segment end precedes start")
+        return self
+
 
 class Evidence(StrictModel):
     text: str
@@ -94,3 +100,37 @@ class CapabilitiesResponse(StrictModel):
             "llm": "qwen3.5-9b",
         }
     )
+
+
+class ModelStatus(StrictModel):
+    asr_model: str
+    asr_ready: bool
+    asr_device: str
+    llm_model: str
+    llm_ready: bool
+
+
+class CleanupRequest(StrictModel):
+    text: str = Field(min_length=1, max_length=50000)
+    tone: Tone = Tone.professional
+    language: str | None = Field(default=None, max_length=35)
+    protected_terms: list[str] = Field(default_factory=list, max_length=40)
+
+
+class CleanupResponse(StrictModel):
+    raw_text: str
+    clean_text: str
+    tone: Tone
+    model: str
+    review_required: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TranscriptionResponse(StrictModel):
+    raw_text: str
+    clean_text: str | None
+    language: str | None
+    model: str
+    segments: list[TranscriptSegment]
+    cleanup: CleanupResponse | None = None
+    elapsed_ms: int = Field(ge=0)
