@@ -11,9 +11,15 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const SAMPLE_RATE: u32 = 16_000;
 const FLUSH_EVERY_SAMPLES: u64 = SAMPLE_RATE as u64 * 5;
 
+fn default_meeting_kind() -> String {
+    "meeting".into()
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct MeetingInfo {
     pub id: String,
+    #[serde(default = "default_meeting_kind")]
+    pub kind: String,
     pub started_at: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -54,6 +60,12 @@ pub struct MeetingInsights {
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct MeetingJob {
     pub id: String,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub generated_note_id: Option<String>,
+    #[serde(default)]
+    pub clean_text: Option<String>,
     pub title: Option<String>,
     pub meeting_date: Option<String>,
     pub status: String,
@@ -206,7 +218,12 @@ pub fn start_meeting(
     state: State<'_, MeetingState>,
     title: Option<String>,
     meeting_date: Option<String>,
+    kind: Option<String>,
 ) -> Result<MeetingInfo, String> {
+    let kind = kind.unwrap_or_else(default_meeting_kind);
+    if kind != "meeting" && kind != "note" {
+        return Err("Invalid recording kind".into());
+    }
     let title = title.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
     if title.as_ref().is_some_and(|s| s.chars().count() > 180) {
         return Err("Meeting title is too long".into());
@@ -232,6 +249,7 @@ pub fn start_meeting(
     let audio_path = directory.join("audio.wav");
     let mut info = MeetingInfo {
         id,
+        kind,
         started_at: Utc::now().to_rfc3339(),
         title,
         meeting_date,
@@ -513,6 +531,7 @@ pub async fn submit_meeting(
     // this request after a network failure retrieves the durable byte offset.
     let mut request = http.post(root.clone()).json(&serde_json::json!({
         "meeting_id": id,
+        "kind": info.kind,
         "total_bytes": audio_size,
         "title": info.title,
         "meeting_date": info.meeting_date,
