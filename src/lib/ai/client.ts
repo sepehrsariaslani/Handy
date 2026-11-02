@@ -3,6 +3,8 @@ import type {
   AiCleanupRequest,
   AiCleanupResponse,
   AiModelStatus,
+  AiMemoryQuery,
+  AiMemoryResponse,
   AiNote,
   AiNotesPage,
   AiSession,
@@ -160,4 +162,21 @@ export class HandyAiClient {
     if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid note ID");
     return this.request<void>("/v1/notes/" + id, { method: "DELETE" });
   }
+
+  searchMemory(body: AiMemoryQuery): Promise<AiMemoryResponse> {
+    return this.request<AiMemoryResponse>("/v1/memory/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  askMemory(body: AiMemoryQuery): Promise<AiMemoryResponse> {
+    return this.request<AiMemoryResponse>("/v1/memory/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
 }

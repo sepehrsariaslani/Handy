@@ -127,3 +127,34 @@ export interface AiNotesPage {
   items: AiNoteSummary[];
   total: number;
 }
+
+
+/** Phase-7 source-grounded retrieval across prior meetings and notes. */
+export type AiMemoryScope = "all" | "notes" | "meetings";
+export type AiMemoryStatus = "answered" | "search_only" | "not_found";
+export interface AiMemoryQuery {
+  question: string;
+  scope?: AiMemoryScope;
+  since?: string | null;
+  until?: string | null;
+}
+export interface AiMemorySource {
+  id: string;
+  kind: "note" | "meeting";
+  document_id: string;
+  source_id: string;
+  title: string;
+  quote: string;
+  created_at: string;
+  speaker: string | null;
+  start: number | null;
+}
+export interface AiMemoryResponse {
+  question: string;
+  scope: AiMemoryScope;
+  status: AiMemoryStatus;
+  answer: string | null;
+  citations: string[];
+  sources: AiMemorySource[];
+  warning: string | null;
+}
