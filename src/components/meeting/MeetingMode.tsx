@@ -484,7 +484,7 @@ export const MeetingMode = () => {
         </div>
         {autoProcessing && (
           <p className="text-sm text-logo-primary" role="status">
-            Uploading recording and starting transcription...
+            {t("meeting.autoProcessing")}
           </p>
         )}
         <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
