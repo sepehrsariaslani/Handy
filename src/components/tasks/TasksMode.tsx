@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type { AiTask, AiTaskInput, AiTaskStatus } from "@/lib/ai/contracts";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const toError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -20,6 +21,8 @@ export function TasksMode() {
   const { t } = useTranslation();
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
   const [apiKey, setApiKey] = useState("");
+  const localApiKey = useLocalAiApiKey(serverUrl);
+  const authToken = apiKey.trim() || localApiKey;
   const [meetingId, setMeetingId] = useState("");
   const [tasks, setTasks] = useState<AiTask[]>([]);
   const [filter, setFilter] = useState<AiTaskStatus | "all">("all");
@@ -31,13 +34,13 @@ export function TasksMode() {
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState(0);
   const client = useMemo(() => {
-    if (!apiKey.trim()) return null;
+    if (!authToken) return null;
     try {
-      return new HandyAiClient(serverUrl, apiKey.trim());
+      return new HandyAiClient(serverUrl, authToken);
     } catch {
       return null;
     }
-  }, [apiKey, serverUrl]);
+  }, [authToken, serverUrl]);
 
   const reload = useCallback(async () => {
     if (!client) {
@@ -151,7 +154,10 @@ export function TasksMode() {
             type="url"
             value={serverUrl}
             className="border border-line bg-transparent rounded-lg px-3 py-2"
-            onChange={(event) => setServerUrl(event.target.value)}
+            onChange={(event) => {
+              setServerUrl(event.target.value);
+              setApiKey("");
+            }}
             onBlur={() => {
               try {
                 setServerUrl(saveServerUrl(serverUrl));
@@ -167,6 +173,7 @@ export function TasksMode() {
             type="password"
             autoComplete="off"
             value={apiKey}
+            placeholder={localApiKey ? "Local API key detected" : undefined}
             className="border border-line bg-transparent rounded-lg px-3 py-2"
             onChange={(event) => setApiKey(event.target.value)}
           />
