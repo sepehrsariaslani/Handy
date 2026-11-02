@@ -1,4 +1,9 @@
 from pathlib import Path
+import os
+
+# The production app module rejects startup without a secret; test collection
+# sets an explicit test-only value before importing its Uvicorn entrypoint.
+os.environ.setdefault("HANDY_API_KEY", "test-only-token-not-for-production-1234567890")
 
 from fastapi.testclient import TestClient
 import pytest
