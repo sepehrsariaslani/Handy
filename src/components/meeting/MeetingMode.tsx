@@ -443,43 +443,43 @@ export const MeetingMode = () => {
       </div>
 
       {!LOCAL_AI_TEST_MODE && (
-      <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Server size={17} />
-          {t("meeting.server")}
-        </h2>
-        <label className="flex flex-col gap-1 text-sm">
-          {t("meeting.serverUrl")}
-          <input
-            className="rounded-lg border border-line bg-transparent px-3 py-2"
-            type="url"
-            value={serverUrl}
-            onChange={(event) => {
-              setServerUrl(event.target.value);
-              setApiKey("");
-            }}
-            onBlur={() => {
-              try {
-                setServerUrl(saveServerUrl(serverUrl));
-              } catch (error) {
-                toast.error(readError(error));
-              }
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          {t("meeting.apiKey")}
-          <input
-            className="rounded-lg border border-line bg-transparent px-3 py-2"
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            placeholder={localApiKey ? "Local API key detected" : undefined}
-            onChange={(event) => setApiKey(event.target.value)}
-          />
-        </label>
-        <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
-      </div>
+        <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Server size={17} />
+            {t("meeting.server")}
+          </h2>
+          <label className="flex flex-col gap-1 text-sm">
+            {t("meeting.serverUrl")}
+            <input
+              className="rounded-lg border border-line bg-transparent px-3 py-2"
+              type="url"
+              value={serverUrl}
+              onChange={(event) => {
+                setServerUrl(event.target.value);
+                setApiKey("");
+              }}
+              onBlur={() => {
+                try {
+                  setServerUrl(saveServerUrl(serverUrl));
+                } catch (error) {
+                  toast.error(readError(error));
+                }
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            {t("meeting.apiKey")}
+            <input
+              className="rounded-lg border border-line bg-transparent px-3 py-2"
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              placeholder={localApiKey ? "Local API key detected" : undefined}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </label>
+          <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
+        </div>
       )}
 
       <section className="w-full flex flex-col gap-2">
