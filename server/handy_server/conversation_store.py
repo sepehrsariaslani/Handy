@@ -1,4 +1,5 @@
 """Persistent bounded multi-turn conversations, one conversation per explicit session."""
+from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
