@@ -196,3 +196,8 @@ See [Phase 6](../docs/ai-phase6-notes.md) for the API and deployment.
 CPU-only full-text retrieval across notes and completed meetings, with
 optional Qwen answers and exact source citations. See
 [Phase 7 Memory](../docs/ai-phase7-memory.md) for usage and safety limits.
+
+## Phase 8: conversations, tasks and semantic memory
+
+Tasks with transcript evidence, multi-turn memory and optional CPU embeddings.
+See [Phase 8 Workflows](../docs/ai-phase8-workflows.md) for setup and limitations.
