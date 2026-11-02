@@ -21,12 +21,12 @@ class MeetingStore:
                 status TEXT NOT NULL, stage TEXT NOT NULL, error TEXT,
                 duration REAL NOT NULL, next_sample INTEGER NOT NULL DEFAULT 0,
                 language TEXT, insights TEXT, title TEXT, meeting_date TEXT,
-                kind TEXT NOT NULL DEFAULT 'meeting', generated_note_id TEXT,
+                asr_model_id TEXT, kind TEXT NOT NULL DEFAULT 'meeting', generated_note_id TEXT,
                  created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""")
             columns = {row[1] for row in db.execute("PRAGMA table_info(meeting_jobs)")}
-            for column in ("title", "meeting_date", "kind", "generated_note_id"):
+            for column in ("title", "meeting_date", "kind", "generated_note_id", "asr_model_id"):
                 if column not in columns:
                     default = " NOT NULL DEFAULT 'meeting'" if column == "kind" else ""
                     db.execute(f"ALTER TABLE meeting_jobs ADD COLUMN {column} TEXT" + default)
@@ -53,7 +53,7 @@ class MeetingStore:
 
     def create(self, path: Path, duration: float, client_ref: str | None, language: str | None,
                title: str | None = None, meeting_date: str | None = None,
-               kind: str = "meeting") -> dict:
+               kind: str = "meeting", asr_model_id: str | None = None) -> dict:
         job_id = uuid4().hex
         with self.connect() as db:
             if client_ref:
@@ -62,10 +62,10 @@ class MeetingStore:
                     return dict(prior)
             db.execute("""INSERT INTO meeting_jobs
                 (id, client_ref, audio_path, status, stage, duration, next_sample, language,
-                 title, meeting_date, kind, created_at, updated_at)
-                 VALUES(?,?,?,'queued','queued',?,0,?,?,?,?,?,?)""",
+                 title, meeting_date, kind, asr_model_id, created_at, updated_at)
+                 VALUES(?,?,?,'queued','queued',?,0,?,?,?,?,?,?,?)""",
                 (job_id, client_ref, str(path), duration, language,
-                 title, meeting_date, kind, now(), now()))
+                 title, meeting_date, kind, asr_model_id, now(), now()))
         return self.get(job_id)
 
     def by_client_ref(self, value: str) -> dict | None:
@@ -210,6 +210,7 @@ class MeetingStore:
         return {
             "id": job_id, "title": job["title"], "meeting_date": job["meeting_date"],
             "kind": job["kind"], "generated_note_id": job["generated_note_id"],
+            "asr_model_id": job["asr_model_id"],
             "clean_text": cleaned[0] if cleaned else None,
             "status": job["status"], "stage": job["stage"],
             "error": job["error"], "duration": job["duration"],
