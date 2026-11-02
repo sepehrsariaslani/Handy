@@ -18,6 +18,7 @@ import {
   saveServerUrl,
 } from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
+import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -172,6 +173,8 @@ export function NotesMode() {
         </h1>
         <p className="text-sm text-ink-3 mt-1">{t("notes.intro")}</p>
       </header>
+
+      {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
 
       {!LOCAL_AI_TEST_MODE && (
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
