@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:mac": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:mac": "bash scripts/link-dev-whisper-model.sh && tauri dev --config src-tauri/tauri.dev.conf.json",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
