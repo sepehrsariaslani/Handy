@@ -31,42 +31,15 @@ class QwenMeetingAnalyzer:
         self.llm = llm
 
     async def _request(self, content: str, allowed_ids: set[str]) -> MeetingAnalysis:
-        if not await self.llm.ready():
-            raise WorkerUnavailable("Qwen3.5-9B is not ready")
-        base = validate_llm_url(self.config.qwen_base_url)
-        payload = {
-            "model": self.config.qwen_model,
-            "messages": [
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": content},
-            ],
-            "temperature": 0,
-            "max_tokens": 2048,
-            "response_format": {"type": "json_object"},
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
         try:
-            async with httpx.AsyncClient(
-                transport=getattr(self.llm, "_transport", None),
-                timeout=httpx.Timeout(120.0, connect=5.0),
-                follow_redirects=False,
-            ) as client:
-                response = await client.post(
-                    base + "/chat/completions",
-                    json=payload,
-                    headers={"Authorization": "Bearer " + self.config.qwen_api_key},
-                )
-                response.raise_for_status()
-                message = response.json()["choices"][0]["message"]["content"]
-                if not isinstance(message, str):
-                    raise ValueError("Invalid JSON response")
-                if "<think>" in message or "</think>" in message:
-                    raise ValueError("Unexpected model reasoning in answer")
-                document = json.loads(message)
-                parsed = MeetingAnalysis.model_validate(document)
-        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError,
-                ValidationError) as exc:
-            raise WorkerFailure("Meeting analysis failed (" + type(exc).__name__ + ")") from None
+            document = await self.llm.structured(
+                [{"role": "system", "content": SYSTEM},
+                 {"role": "user", "content": content}],
+                max_tokens=2048, operation="meeting_analysis",
+            )
+            parsed = MeetingAnalysis.model_validate(document)
+        except ValidationError:
+            raise WorkerFailure("Meeting analysis returned invalid JSON schema") from None
 
         # Evidence is only allowed to reference real, permitted utterances;
         # invented references cannot silently reach the UI.
