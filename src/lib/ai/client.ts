@@ -30,7 +30,9 @@ export class HandyAiClient {
     });
     if (!response.ok) {
       // Never print server bodies: they may contain private transcripts.
-      throw new Error("AI server request failed (HTTP " + response.status + ")");
+      throw new Error(
+        "AI server request failed (HTTP " + response.status + ")",
+      );
     }
     return (await response.json()) as T;
   }
