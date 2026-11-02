@@ -84,6 +84,19 @@ def attach_notes_routes(app: FastAPI, config, meetings, runtime, require_auth):
         title = "جلسه " + job["created_at"][:10]
         return store.create(title, content, meeting_id=job_id, sources=source_rows)
 
+    @app.get("/v1/notes/by-recording/{job_id}", dependencies=protected)
+    def note_from_recording(job_id: str):
+        if not ID.fullmatch(job_id):
+            raise HTTPException(status_code=404, detail="Recording not found")
+        job = meetings.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Recording not found")
+        if job["status"] != "completed":
+            raise HTTPException(status_code=409, detail="Recording is still processing")
+        if not job["generated_note_id"]:
+            raise HTTPException(status_code=404, detail="No speech was detected")
+        return store.get(job["generated_note_id"])
+
     def required(note_id: str):
         if not ID.fullmatch(note_id):
             raise HTTPException(status_code=404, detail="Note not found")
