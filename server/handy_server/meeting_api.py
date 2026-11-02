@@ -92,6 +92,14 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
             "total": store.count(job_id),
         }
 
+    @app.get("/v1/meetings/{job_id}/cleaned", dependencies=authorized)
+    def get_cleaned_transcript(job_id: str, offset: int = 0, limit: int = 10):
+        if not ID.fullmatch(job_id) or store.get(job_id) is None:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        if offset < 0 or not 1 <= limit <= 20:
+            raise HTTPException(status_code=422, detail="Invalid pagination")
+        return store.cleaned(job_id, offset, limit)
+
     @app.post("/v1/meetings/{job_id}/retry", response_model=MeetingJob,
               dependencies=authorized)
     def retry_meeting_job(job_id: str):
