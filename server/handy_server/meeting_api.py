@@ -6,6 +6,8 @@ import re
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import Field
+from .schemas import StrictModel
 
 from .meeting_processing import validated_duration
 from .schemas import MeetingJob
@@ -13,6 +15,17 @@ from .workers import WorkerUnavailable
 
 REF = re.compile(r"^[A-Za-z0-9-]{1,80}$")
 ID = re.compile(r"^[a-f0-9]{32}$")
+SPEAKER = re.compile(r"^(SPEAKER_[0-9]{2,}|MANUAL_[0-9]{2,}|Unknown)$")
+SEGMENT = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+class SpeakerNamePatch(StrictModel):
+    name: str = Field(max_length=80)
+
+
+class SegmentSpeakerPatch(StrictModel):
+    speaker: str = Field(min_length=1, max_length=80)
+
 
 def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
     authorized = [Depends(require_auth)]
@@ -106,6 +119,37 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
         if offset < 0 or not 1 <= limit <= 20:
             raise HTTPException(status_code=422, detail="Invalid pagination")
         return store.cleaned(job_id, offset, limit)
+
+    @app.put("/v1/meetings/{job_id}/speakers/{speaker}", dependencies=authorized)
+    def update_speaker_name(job_id: str, speaker: str, body: SpeakerNamePatch):
+        if not ID.fullmatch(job_id) or store.get(job_id) is None:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        if not SPEAKER.fullmatch(speaker) or speaker == "Unknown":
+            raise HTTPException(status_code=422, detail="Invalid speaker ID")
+        name = body.name.strip()
+        if any(ord(ch) < 32 for ch in name):
+            raise HTTPException(status_code=422, detail="Invalid speaker name")
+        try:
+            store.rename_speaker(job_id, speaker, name)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"speaker_names": store.speaker_names(job_id)}
+
+    @app.put("/v1/meetings/{job_id}/transcript/{segment_id}/speaker",
+             dependencies=authorized)
+    def correct_segment_speaker(job_id: str, segment_id: str,
+                                body: SegmentSpeakerPatch):
+        if not ID.fullmatch(job_id) or store.get(job_id) is None:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        if not SEGMENT.fullmatch(segment_id) or not SPEAKER.fullmatch(body.speaker):
+            raise HTTPException(status_code=422, detail="Invalid segment or speaker ID")
+        try:
+            store.correct_speaker(job_id, segment_id, body.speaker)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Segment not found") from None
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"id": segment_id, "speaker": body.speaker}
 
     @app.post("/v1/meetings/{job_id}/retry", response_model=MeetingJob,
               dependencies=authorized)
