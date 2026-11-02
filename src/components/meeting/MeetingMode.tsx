@@ -52,6 +52,15 @@ type MeetingJob = {
   error?: string | null;
   transcript?: Utterance[];
   insights?: Insights;
+  duration?: number;
+  processed_seconds?: number;
+  transcript_count?: number;
+};
+
+type TranscriptPage = {
+  items: Utterance[];
+  offset: number;
+  total: number;
 };
 
 const readError = (error: unknown) =>
@@ -77,6 +86,8 @@ export const MeetingMode = () => {
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<MeetingJob | null>(null);
   const [visibleCount, setVisibleCount] = useState(150);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sourcePreview, setSourcePreview] = useState<Utterance | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
   const speakers = useMemo(
@@ -105,7 +116,13 @@ export const MeetingMode = () => {
           apiKey: apiKey || null,
           jobId,
         });
-        if (alive) setJob(result);
+        if (alive)
+          setJob((current) =>
+            current?.id === result.id &&
+            (current.transcript?.length ?? 0) > (result.transcript?.length ?? 0)
+              ? { ...result, transcript: current.transcript }
+              : result,
+          );
       } catch (error) {
         if (alive) toast.error(readError(error));
       }
@@ -207,6 +224,73 @@ export const MeetingMode = () => {
     }
   };
 
+  const loadMore = async () => {
+    if (!job || busy || loadingMore) return;
+    const count = job.transcript?.length ?? 0;
+    if (count >= (job.transcript_count ?? count)) {
+      setVisibleCount((current) => Math.min(current + 150, count));
+      return;
+    }
+    setLoadingMore(true);
+    try {
+      const page = await invoke<TranscriptPage>("get_meeting_transcript", {
+        serverUrl,
+        apiKey: apiKey || null,
+        jobId: job.id,
+        offset: count,
+        limit: 150,
+      });
+      setJob((current) => {
+        if (!current || current.id !== job.id) return current;
+        const merged = [...(current.transcript ?? []), ...page.items];
+        const unique = new Map(merged.map((item) => [item.id, item]));
+        return {
+          ...current,
+          transcript: [...unique.values()].sort((a, b) => a.start - b.start),
+          transcript_count: page.total,
+        };
+      });
+      setVisibleCount(count + page.items.length);
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const jumpToSource = async (id: string) => {
+    const index = job?.transcript?.findIndex((item) => item.id === id) ?? -1;
+    setTranscriptOpen(true);
+    if (index >= 0) {
+      if (index >= visibleCount) setVisibleCount(index + 1);
+      window.setTimeout(
+        () =>
+          document.getElementById("meeting-" + id)?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          }),
+        50,
+      );
+      return;
+    }
+    if (!job) return;
+    const ordinal = Number(id.match(/^u([0-9]{8})$/)?.[1]);
+    if (!Number.isSafeInteger(ordinal) || ordinal <= 0) return;
+    try {
+      const page = await invoke<TranscriptPage>("get_meeting_transcript", {
+        serverUrl,
+        apiKey: apiKey || null,
+        jobId: job.id,
+        offset: ordinal - 1,
+        limit: 1,
+      });
+      const found = page.items.find((entry) => entry.id === id);
+      if (found) setSourcePreview(found);
+    } catch (error) {
+      toast.error(readError(error));
+    }
+  };
+
   const sources = (ids: string[]) => (
     <span className="inline-flex flex-wrap gap-1 ps-2">
       {ids.map((id) => (
@@ -214,19 +298,7 @@ export const MeetingMode = () => {
           key={id}
           type="button"
           className="text-xs text-logo-primary underline"
-          onClick={() => {
-            const index =
-              job?.transcript?.findIndex((segment) => segment.id === id) ?? -1;
-            setTranscriptOpen(true);
-            if (index >= visibleCount) setVisibleCount(index + 1);
-            window.setTimeout(
-              () =>
-                document
-                  .getElementById("meeting-" + id)
-                  ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-              50,
-            );
-          }}
+          onClick={() => void jumpToSource(id)}}
         >
           {id}
         </button>
@@ -427,7 +499,18 @@ export const MeetingMode = () => {
           </h2>
           <p className="text-sm text-ink-3">
             {t("meeting.status")}: {job.status} · {job.stage ?? "-"}
+            {job.duration && job.processed_seconds !== undefined
+              ? ` · ${Math.floor((job.processed_seconds / job.duration) * 100)}%`
+              : ""}
           </p>
+          {Boolean(job.duration) && (
+            <progress
+              className="w-full h-2"
+              aria-label={t("meeting.status")}
+              max={job.duration}
+              value={job.processed_seconds ?? 0}
+            />
+          )}
           {job.error && (
             <p role="alert" className="text-red-500 text-sm">
               {job.error}
@@ -455,6 +538,17 @@ export const MeetingMode = () => {
               {evidence(job.insights.tasks, t("meeting.tasks"))}
               {evidence(job.insights.open_questions, t("meeting.questions"))}
             </>
+          )}
+          {sourcePreview && (
+            <div className="border border-line p-3 rounded-lg text-sm">
+              <span className="font-medium">
+                {speakerNames[sourcePreview.speaker] || sourcePreview.speaker}
+              </span>
+              <span className="ms-2 text-xs text-ink-3">
+                {formatTime(sourcePreview.start)} · {sourcePreview.id}
+              </span>
+              <p className="whitespace-pre-wrap mt-2">{sourcePreview.text}</p>
+            </div>
           )}
           {speakers.length > 0 && (
             <section className="w-full flex flex-col gap-2">
@@ -508,11 +602,13 @@ export const MeetingMode = () => {
                   </p>
                 ))}
               </div>
-              {job.transcript.length > visibleCount && (
+              {(job.transcript_count ?? job.transcript.length) >
+                visibleCount && (
                 <button
                   type="button"
                   className="mt-3 px-3 py-2 rounded-lg border border-line text-sm"
-                  onClick={() => setVisibleCount((count) => count + 150)}
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
                 >
                   {t("meeting.showMore")}
                 </button>
