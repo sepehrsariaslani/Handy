@@ -168,7 +168,7 @@ export const MeetingMode = () => {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [jobId, authToken, serverUrl]);
+  }, [jobId, authToken, serverUrl, job?.status]);
 
   // Fill missing local metadata only after the model has completed processing.
   useEffect(() => {
