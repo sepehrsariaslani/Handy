@@ -174,8 +174,8 @@ class MeetingProcessor:
         # Accurate speaker boundaries require short enough segments for the
         # optional CTC word aligner. Keep native 10-minute fidelity when off.
         aligned_native = (
-            native and self.diarizer.ready
-            and self.aligner is not None and self.aligner.ready
+            native and job.get("kind", "meeting") == "meeting"
+            and self.diarizer.ready and self.aligner is not None and self.aligner.ready
         )
         while position < limit_frames:
             start_frame, end_frame = asr_window_plan(position, limit_frames, native, aligned_native)
@@ -233,7 +233,7 @@ class MeetingProcessor:
             if self._stop.is_set():
                 return
 
-        if self.diarizer.ready:
+        if self.diarizer.ready and job.get("kind", "meeting") == "meeting":
             await asyncio.to_thread(self.store.stage, job_id, "diarizing")
             # The pyannote pipeline is intentionally not run on 20-hour files:
             # it loads full audio and could exhaust GPU or system memory.
