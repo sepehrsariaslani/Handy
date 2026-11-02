@@ -9,6 +9,7 @@ import {
   Sparkles,
   Link2,
   Mic,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
@@ -38,6 +39,7 @@ export function NotesMode() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [note, setNote] = useState<AiNote | null>(null);
+  const [editorExpanded, setEditorExpanded] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [meetingId, setMeetingId] = useState("");
@@ -95,6 +97,7 @@ export function NotesMode() {
       setNote(record);
       setTitle(record.title);
       setContent(record.content);
+      setEditorExpanded(true);
     } catch (error) {
       toast.error(t("notes.loadFailed"), { description: message(error) });
     } finally {
@@ -109,6 +112,7 @@ export function NotesMode() {
     setContent("");
     setLivePartial("");
     setLiveStatus("idle");
+    setEditorExpanded(true);
   };
 
   const startLiveNote = async () => {
@@ -290,6 +294,7 @@ export function NotesMode() {
     try {
       await client.deleteNote(note.id);
       newNote();
+      setEditorExpanded(false);
       toast.success(t("notes.deleted"));
       await loadList();
     } catch (error) {
@@ -307,6 +312,7 @@ export function NotesMode() {
       setNote(imported);
       setTitle(imported.title);
       setContent(imported.content);
+      setEditorExpanded(true);
       setMeetingId("");
       toast.success(t("notes.imported"));
       await loadList();
@@ -368,7 +374,8 @@ export function NotesMode() {
         </section>
       )}
 
-      <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
+      {!editorExpanded && (
+        <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
         <label className="flex-1 min-w-40 flex flex-col gap-1 text-sm">
           {t("notes.meetingId")}
           <input
@@ -387,10 +394,18 @@ export function NotesMode() {
         >
           <Link2 size={16} /> {t("notes.importMeeting")}
         </button>
-      </section>
+        </section>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)] gap-4">
-        <section className="rounded-xl border border-line p-3 flex flex-col gap-3">
+      <div
+        className={
+          editorExpanded
+            ? "flex flex-col gap-4"
+            : "grid grid-cols-1 md:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)] gap-4"
+        }
+      >
+        {!editorExpanded && (
+          <section className="rounded-xl border border-line p-3 flex flex-col gap-3">
           <div className="flex gap-2 items-center">
             <Search size={17} className="text-ink-3" />
             <input
@@ -457,8 +472,20 @@ export function NotesMode() {
               </button>
             </div>
           </div>
-        </section>
+          </section>
+        )}
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+          {editorExpanded && (
+            <button
+              type="button"
+              disabled={liveBusy}
+              onClick={() => setEditorExpanded(false)}
+              className="inline-flex w-fit items-center gap-2 text-sm text-ink-2 hover:text-text disabled:opacity-50"
+            >
+              <ArrowLeft size={16} />
+              {t("onboarding.shell.back")}
+            </button>
+          )}
           <div className="flex flex-col gap-3 rounded-xl bg-wash/30 border border-line p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Mic size={17} />
