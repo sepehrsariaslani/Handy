@@ -18,22 +18,16 @@ speaker diarization, cited summaries, decisions and action items.
    from the recorded byte offset. Requests and responses use bearer authentication.
 5. The server validates WAV headers, channel count, sample rate and <=20-hour
    duration; it queues a SQLite-backed meeting job.
-6. Native Whisper ASR uses 600-second windows with five seconds of overlap.
-   When diarization **and** optional word alignment are enabled, native ASR
-   uses 40-second windows to support accurate word-level timing. Checkpoints
-   remain durable across restarts. Smaller windows can affect ASR accuracy,
-   so compare against your original large-window transcripts.
-7. Pyannote Community-1 diarizes long recordings in **bounded 15-minute
-   windows** with ten-second context overlap. Cross-window labels are matched
-   conservatively using voice embeddings, not local label order; when the
-   identity is unclear the system does not assert a match. Models and settings
-   must be installed and enabled separately.
-   Optional WhisperX Persian/English forced alignment can split short ASR
-   segments (up to 45 seconds) at word-level speaker changes. The source
-   wording is verified token-for-token; missing timestamps or mismatched
-   words cause fallback rather than invented timestamps. Long unaligned blocks
-   containing several voices can remain **Unknown**. Local speaker names and
-   per-utterance corrections now persist across app restarts.
+6. A single API worker processes one **30-second** window with Whisper Large
+   V3 at a time. Each window's transcript, absolute timestamps and the next
+   audio sample are committed together. After a crash, restarting the service
+   resumes from its last committed checkpoint.
+7. If optional pyannote Community-1 is installed, configured and loaded,
+   speaker segments are assigned to utterances by temporal overlap. The
+   pipeline now processes up to 15-minute audio windows and matches
+   speaker embeddings conservatively between windows. A mixed-speaker
+   block without reliable word timing stays **Unknown** rather than
+   inventing a speaker. Speaker names and corrections persist in SQLite.
 8. Qwen3.5-9B generates evidence-linked summaries, decisions, tasks and open
    questions. The model processes batches and hierarchical summaries; invalid
    source IDs are removed. Model output still needs user review.
@@ -67,17 +61,14 @@ export HANDY_DIARIZATION_ENABLED=true
 export HANDY_HF_TOKEN=your_hf_token
 export HANDY_DIARIZATION_MAX_HOURS=2
 export HANDY_WORD_ALIGNMENT_ENABLED=true
-export HANDY_WORD_ALIGNMENT_DEVICE=cpu  # or cuda on GPU servers
+export HANDY_WORD_ALIGNMENT_DEVICE=cpu
 export HANDY_MAX_MEETING_SECONDS=72000
 export HANDY_MAX_MEETING_BYTES=2400000000
 \`\`\`
 
-Pyannote 4 and WhisperX require FFmpeg. On macOS install the optional extras
-in the existing `server/.venv` and restart `bun run dev:mac` from the same
-terminal that exported the environment variables. A pre-existing server on
-port 8765 is reused with its old settings until stopped cleanly.
-Word alignment downloads a separate CTC model and can be slow on a Mac.
-Do not store Hugging Face access tokens in git or expose Qwen publicly.
+Pyannote 4 additionally requires FFmpeg available on the host. Keep Hugging
+Face access tokens and Handy API keys outside source control, never expose
+Qwen/vLLM to the public network.
 
 **Run a single API process:** \`uvicorn handy_server.main:app --workers 1\`.
 The meeting queue, upload locks and the existing streaming session locks are
@@ -104,10 +95,6 @@ All endpoints require \`Authorization: Bearer HANDY_API_KEY\`.
   first 150 utterances and available insights.
 - \`GET /v1/meetings/{job_id}/transcript?offset=0&limit=150\`: paginated
   utterances with stable IDs and timestamps.
-- `PUT /v1/meetings/{job_id}/speakers/{speaker}`: set a per-meeting
-  name via `{"name":"رضا"}`; empty name clears it.
-- `PUT /v1/meetings/{job_id}/transcript/{segment_id}/speaker`: correct
-  an utterance to `{"speaker":"SPEAKER_01"}` or `{"speaker":"MANUAL_01"}`.
 - \`POST /v1/meetings/{job_id}/retry\`: requeues only failed jobs, preserving
   already committed Whisper transcription windows.
 
@@ -124,15 +111,9 @@ All endpoints require \`Authorization: Bearer HANDY_API_KEY\`.
   SQLite data, upload spool and temporary inference windows. Ensure sufficient
   free disk and filesystem file-size limits. No 20-hour hardware endurance
   benchmark has yet been run.
-- Speaker diarization for >2h is now windowed, with heuristic cross-window
-  matching. The same person may still receive more than one label. This is
-  *not* biometric identification of named people across different meetings;
-  speaker centroids are kept only in memory for the active job. Automatic
-  identity reuse requires a separate consent-based enrollment flow.
-- Manual speaker corrections do not automatically re-run Qwen summaries or
-  change task assignees already saved. Avoid assuming they were revised.
-- Neither 20-hour diarization quality nor Mac performance has yet been
-  benchmarked on a multi-speaker recording.
+- Long recordings are processed in bounded diarization windows with
+  conservative speaker matching. No 20-hour quality benchmark has run.
+  Names are per-meeting, not biometric identification across meetings.
 - LLM extraction is inherently probabilistic. Evidence IDs validate that a
   source exists, not that a paraphrase is true. Review owners, dates,
   decisions, and negations before publishing/exporting.
