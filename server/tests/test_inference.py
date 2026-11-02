@@ -178,6 +178,114 @@ def test_ollama_provider_override_for_custom_port(tmp_path):
     assert result.clean_text == "سلام."
 
 
+def test_gguf_worker_reuses_local_model_without_hub_download(tmp_path, monkeypatch):
+    """CLI JSONL segments are mapped to the existing meeting ASR protocol."""
+    import json
+    import wave
+    import subprocess
+
+    from handy_server.workers import GgufWhisperWorker
+
+    model = tmp_path / "whisper-large-v3-Q5_K_M.gguf"
+    model.write_bytes(b"test-gguf-not-a-real-model")
+    binary = tmp_path / "transcribe-cli"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    wav = tmp_path / "meeting.wav"
+    with wave.open(str(wav), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\0" * 32000)
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        assert "-m" in command and str(model) in command
+        assert "--batch-jsonl" in command
+        assert command[command.index("--backend") + 1] == "auto"
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        input_path = Path(command[command.index("--batch") + 1])
+        assert input_path.read_text().strip()
+        rows = [
+            {"type": "batch_header", "load_ms": 12},
+            {"file": str(wav), "text": "سلام دنیا",
+             "segments": [{"t0_ms": 250, "t1_ms": 1750, "text": "سلام دنیا"}]}
+        ]
+        return subprocess.CompletedProcess(command, 0, "\n".join(map(json.dumps, rows)), "")
+
+    monkeypatch.setattr("handy_server.workers.subprocess.run", fake_run)
+    settings = Settings(
+        api_key=TOKEN, db_path=tmp_path / "test.db", asr_enabled=True,
+        asr_backend="gguf_cli", gguf_model_path=model,
+        transcribe_cli_path=binary,
+    )
+    worker = GgufWhisperWorker(settings)
+    worker.initialize()
+    assert worker.ready
+    segments, lang = worker.transcribe_file(wav, "fa")
+    assert lang == "fa"
+    assert len(calls) == 2  # startup smoke probe + actual clip
+    assert [s.raw_text for s in segments] == ["سلام دنیا"]
+    assert segments[0].start == 0.25
+    assert segments[0].end == 1.75
+    assert isinstance(InferenceRuntime(settings).asr, GgufWhisperWorker)
+
+
+def test_gguf_worker_not_ready_when_binary_is_missing(tmp_path):
+    from handy_server.workers import GgufWhisperWorker
+
+    config = Settings(
+        api_key=TOKEN, db_path=tmp_path / "test.db", asr_enabled=True,
+        asr_backend="gguf_cli", gguf_model_path=tmp_path / "missing.gguf",
+        transcribe_cli_path=tmp_path / "missing-cli",
+    )
+    worker = GgufWhisperWorker(config)
+    worker.initialize()
+    assert worker.ready is False
+    with pytest.raises(WorkerUnavailable):
+        worker.transcribe_file(tmp_path / "not-there.wav")
+
+
+def test_gguf_worker_rejects_invalid_cli_output(tmp_path, monkeypatch):
+    import subprocess
+    from handy_server.workers import GgufWhisperWorker, WorkerFailure
+
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"test")
+    binary = tmp_path / "transcribe-cli"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    config = Settings(
+        api_key=TOKEN, db_path=tmp_path / "test.db", asr_enabled=True,
+        asr_backend="gguf_cli", gguf_model_path=model,
+        transcribe_cli_path=binary,
+    )
+
+    def bad_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "bad json", "")
+
+    monkeypatch.setattr("handy_server.workers.subprocess.run", bad_run)
+    worker = GgufWhisperWorker(config)
+    worker.initialize()
+    assert not worker.ready
+    with pytest.raises(WorkerUnavailable):
+        worker.transcribe_file(tmp_path / "clip.wav")
+
+
+def test_gguf_backend_env_requires_explicit_local_paths(monkeypatch):
+    from handy_server.config import Settings
+
+    monkeypatch.setenv("HANDY_API_KEY", TOKEN)
+    monkeypatch.setenv("HANDY_ASR_ENABLED", "true")
+    monkeypatch.setenv("HANDY_ASR_BACKEND", "gguf_cli")
+    monkeypatch.delenv("HANDY_GGUF_MODEL_PATH", raising=False)
+    monkeypatch.delenv("HANDY_TRANSCRIBE_CLI_PATH", raising=False)
+    with pytest.raises(ValueError, match="GGUF ASR requires"):
+        Settings.from_env()
+
+
 def test_hallucinated_numbers_cause_rollback(tmp_path):
     def handler(req):
         if req.url.path.endswith("/models"):
