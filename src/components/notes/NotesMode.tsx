@@ -531,7 +531,12 @@ export function NotesMode() {
             <button
               type="button"
               disabled={
-                !client || busy || liveBusy || !dirty || !title.trim() || !content.trim()
+                !client ||
+                busy ||
+                liveBusy ||
+                !dirty ||
+                !title.trim() ||
+                !content.trim()
               }
               onClick={() => void save()}
               className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
