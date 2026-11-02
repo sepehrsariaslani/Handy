@@ -428,3 +428,206 @@ def test_meeting_exact_last_second_is_transcribed(tmp_path):
     finally:
         first.unlink(missing_ok=True)
         final.unlink(missing_ok=True)
+
+
+def test_accuracy_first_native_window_planning_and_safe_overlap():
+    """Short audio is whole-file; long audio overlaps without losing the last sample."""
+    from handy_server.meeting_processing import (
+        RATE, NATIVE_WINDOW_SECONDS, asr_window_plan, remove_overlap,
+        preserve_full_cleanup,
+    )
+
+    small = RATE * 31 + 17
+    assert asr_window_plan(0, small, True) == (0, small)
+    assert asr_window_plan(0, small, False) == (0, small)
+
+    long = RATE * (NATIVE_WINDOW_SECONDS + 7) + 3
+    start, first_end = asr_window_plan(0, long, True)
+    assert start == 0
+    assert first_end == NATIVE_WINDOW_SECONDS * RATE
+    follow_start, follow_end = asr_window_plan(first_end, long, True)
+    assert follow_start == first_end - 5 * RATE
+    assert follow_end == long
+    assert follow_end - follow_start > follow_end - first_end
+
+    previous = "امروز گزارش را تکمیل می‌کنیم"
+    continuing = "گزارش را تکمیل می‌کنیم و فردا ارسال می‌کنیم"
+    assert remove_overlap(previous, continuing) == "و فردا ارسال می‌کنیم"
+    # When the models disagree, do not erase potentially real speech.
+    assert remove_overlap(previous, "فردا گزارش جدید آماده می‌شود") == (
+        "فردا گزارش جدید آماده می‌شود"
+    )
+
+    source = "امروز در جلسه توافق کردیم که گزارش کامل پروژه را فردا به مشتری تحویل دهیم"
+    shortened = "امروز در جلسه توافق کردیم که گزارش کامل پروژه را فردا"
+    clean, preserved = preserve_full_cleanup(source, shortened)
+    assert preserved
+    assert clean == source
+    clean, preserved = preserve_full_cleanup(source, source)
+    assert not preserved and clean == source
+
+
+def test_short_native_meeting_transcribes_original_wav_once(tmp_path):
+    """The native desktop engine receives the entire original unmodified file."""
+    import asyncio
+    from handy_server.meeting_processing import MeetingProcessor
+    from handy_server.diarization import Diarizer
+    from handy_server.schemas import MeetingAnalysis
+
+    path = tmp_path / "short.wav"
+    path.write_bytes(wav_data(7))
+    store = MeetingStore(tmp_path / "short-native.db")
+
+    class NativeRuntime:
+        def __init__(self):
+            self.calls = []
+            self.settings = Settings(
+                api_key=KEY, db_path=store.db_path,
+                asr_backend="native_handy", llm_enabled=False,
+            )
+
+        async def asr_ready(self):
+            return True
+
+        async def transcribe(self, audio, language, model):
+            self.calls.append((audio, language, model))
+            return [TranscriptSegment(
+                id="s1", start=0, end=7,
+                raw_text="قرار شد گزارش نهایی در پایان جلسه ارسال شود",
+                final=True,
+            )], "fa"
+
+        async def llm_ready(self):
+            return False
+
+    class Analyzer:
+        async def analyze(self, segments):
+            return MeetingAnalysis(summary="جلسه کامل", tasks=[])
+
+    runtime = NativeRuntime()
+    job = store.create(path, 7.0, "short-native", "fa",
+                       asr_model_id="selected-whisper-gguf")
+    processor = MeetingProcessor(store, runtime, Diarizer(), Analyzer())
+    asyncio.run(processor.process(job))
+    result = store.response(job["id"])
+    assert runtime.calls == [(path, "fa", "selected-whisper-gguf")]
+    assert result["status"] == "completed"
+    assert result["processed_seconds"] == 7
+    assert result["transcript_count"] == 1
+    assert result["transcript"][0]["text"].endswith("ارسال شود")
+    assert result["clean_text"].endswith("ارسال شود")
+
+
+def test_native_long_meeting_overlap_keeps_last_words(tmp_path, monkeypatch):
+    """The last short audio window gets context, and duplicate words are trimmed."""
+    import asyncio
+    import handy_server.meeting_processing as mp
+    from handy_server.diarization import Diarizer
+    from handy_server.schemas import MeetingAnalysis
+
+    monkeypatch.setattr(mp, "NATIVE_WINDOW_SECONDS", 4)
+    monkeypatch.setattr(mp, "NATIVE_OVERLAP_SECONDS", 1)
+    path = tmp_path / "long.wav"
+    path.write_bytes(wav_data(7))
+    store = MeetingStore(tmp_path / "long-native.db")
+
+    class NativeRuntime:
+        def __init__(self):
+            self.durations = []
+            self.settings = Settings(
+                api_key=KEY, db_path=store.db_path,
+                asr_backend="native_handy", llm_enabled=False,
+            )
+
+        async def asr_ready(self):
+            return True
+
+        async def transcribe(self, audio, language, model):
+            with wave.open(str(audio), "rb") as source:
+                self.durations.append(source.getnframes() / 16000)
+            text = (
+                "قرار شد گزارش را برای مشتری ارسال کنیم"
+                if len(self.durations) == 1
+                else "برای مشتری ارسال کنیم و نتیجه نهایی را فردا تحویل دهیم"
+            )
+            return [TranscriptSegment(
+                id="s1", start=0, end=self.durations[-1],
+                raw_text=text, final=True,
+            )], "fa"
+
+        async def llm_ready(self):
+            return False
+
+    class Analyzer:
+        async def analyze(self, segments):
+            return MeetingAnalysis(summary="جلسه کامل", tasks=[])
+
+    runtime = NativeRuntime()
+    job = store.create(path, 7.0, "long-native", "fa",
+                       asr_model_id="selected-whisper-gguf")
+    asyncio.run(mp.MeetingProcessor(
+        store, runtime, Diarizer(), Analyzer()
+    ).process(job))
+    result = store.response(job["id"])
+    assert runtime.durations == [4.0, 4.0]
+    assert result["processed_seconds"] == 7
+    texts = [row["text"] for row in result["transcript"]]
+    assert len(texts) == 2
+    assert texts[1] == "و نتیجه نهایی را فردا تحویل دهیم"
+    assert result["clean_text"].endswith("و نتیجه نهایی را فردا تحویل دهیم")
+
+
+def test_meeting_qwen_does_not_erase_end_of_native_transcript(tmp_path):
+    """If Qwen drops the conclusion, serve the complete ASR transcript instead."""
+    import asyncio
+    from types import SimpleNamespace
+    from handy_server.meeting_processing import MeetingProcessor
+    from handy_server.diarization import Diarizer
+    from handy_server.schemas import MeetingAnalysis
+
+    source = (
+        "امروز در جلسه توافق کردیم که گزارش کامل پروژه را بررسی کنیم "
+        "و نتیجه نهایی را تا روز شنبه به مشتری تحویل بدهیم"
+    )
+    path = tmp_path / "qwen-tail.wav"
+    path.write_bytes(wav_data(3))
+    store = MeetingStore(tmp_path / "qwen-tail.db")
+
+    class Runtime:
+        def __init__(self):
+            self.settings = Settings(
+                api_key=KEY, db_path=store.db_path,
+                asr_backend="native_handy", llm_enabled=True,
+            )
+
+        async def asr_ready(self):
+            return True
+
+        async def transcribe(self, audio, language, model):
+            return [TranscriptSegment(
+                id="s1", start=0, end=3,
+                raw_text=source, final=True,
+            )], "fa"
+
+        async def llm_ready(self):
+            return True
+
+        async def cleanup(self, body):
+            return SimpleNamespace(
+                clean_text="امروز در جلسه توافق کردیم که گزارش کامل پروژه را بررسی کنیم",
+                review_required=False, warnings=[],
+            )
+
+    class Analyzer:
+        async def analyze(self, segments):
+            return MeetingAnalysis(summary="خلاصه", tasks=[])
+
+    job = store.create(path, 3.0, "qwen-tail", "fa",
+                       asr_model_id="selected-whisper-gguf")
+    asyncio.run(MeetingProcessor(
+        store, Runtime(), Diarizer(), Analyzer()
+    ).process(job))
+    result = store.response(job["id"])
+    assert result["status"] == "completed"
+    assert result["clean_text"] == source
+    assert result["clean_text"].endswith("به مشتری تحویل بدهیم")
