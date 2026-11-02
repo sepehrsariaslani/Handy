@@ -98,7 +98,6 @@ export interface AiTranscriptionResponse {
   elapsed_ms: number;
 }
 
-
 /** Phase-6 durable, single-tenant note with source provenance. */
 export interface AiNoteSource {
   id: string;

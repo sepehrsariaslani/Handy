@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpenText, Search, Plus, Save, Trash2, Sparkles, Link2 } from "lucide-react";
+import {
+  BookOpenText,
+  Search,
+  Plus,
+  Save,
+  Trash2,
+  Sparkles,
+  Link2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type { AiNote, AiNoteSummary, AiNotesPage } from "@/lib/ai/contracts";
@@ -112,7 +120,8 @@ export function NotesMode() {
   };
 
   const remove = async () => {
-    if (!client || !note || busy || !window.confirm(t("notes.deleteConfirm"))) return;
+    if (!client || !note || busy || !window.confirm(t("notes.deleteConfirm")))
+      return;
     setBusy(true);
     try {
       await client.deleteNote(note.id);
@@ -144,7 +153,9 @@ export function NotesMode() {
     }
   };
 
-  const dirty = note ? note.title !== title || note.content !== content : !!title || !!content;
+  const dirty = note
+    ? note.title !== title || note.content !== content
+    : !!title || !!content;
 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 pb-8">
@@ -164,8 +175,11 @@ export function NotesMode() {
             value={serverUrl}
             onChange={(event) => setServerUrl(event.target.value)}
             onBlur={() => {
-              try { setServerUrl(saveServerUrl(serverUrl)); }
-              catch (error) { toast.error(message(error)); }
+              try {
+                setServerUrl(saveServerUrl(serverUrl));
+              } catch (error) {
+                toast.error(message(error));
+              }
             }}
           />
         </label>
@@ -212,35 +226,60 @@ export function NotesMode() {
               placeholder={t("notes.search")}
               value={search}
               maxLength={160}
-              onChange={(event) => { setSearch(event.target.value); setPage(0); }}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(0);
+              }}
             />
           </div>
-          <button type="button" onClick={newNote}
-            className="flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+          <button
+            type="button"
+            onClick={newNote}
+            className="flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
+          >
             <Plus size={16} /> {t("notes.new")}
           </button>
           <div className="max-h-[420px] overflow-y-auto flex flex-col gap-1">
             {items.map((item) => (
-              <button key={item.id} type="button" disabled={busy}
+              <button
+                key={item.id}
+                type="button"
+                disabled={busy}
                 onClick={() => void select(item.id)}
-                className={"text-start rounded-lg p-3 hover:bg-line " + (note?.id === item.id ? "bg-line" : "")}>
-                <span className="block font-medium text-sm truncate">{item.title}</span>
-                <span className="block text-xs text-ink-3 mt-1 line-clamp-2">{item.preview}</span>
+                className={
+                  "text-start rounded-lg p-3 hover:bg-line " +
+                  (note?.id === item.id ? "bg-line" : "")
+                }
+              >
+                <span className="block font-medium text-sm truncate">
+                  {item.title}
+                </span>
+                <span className="block text-xs text-ink-3 mt-1 line-clamp-2">
+                  {item.preview}
+                </span>
               </button>
             ))}
-            {!items.length && <p className="text-xs text-ink-3 p-2">
-              {loading ? t("notes.loading") : t("notes.empty")}
-            </p>}
+            {!items.length && (
+              <p className="text-xs text-ink-3 p-2">
+                {loading ? t("notes.loading") : t("notes.empty")}
+              </p>
+            )}
           </div>
           <div className="flex items-center justify-between text-xs text-ink-3">
             <span>{t("notes.count", { count: total })}</span>
             <div className="flex gap-2">
-              <button type="button" disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
                 {t("notes.previous")}
               </button>
-              <button type="button" disabled={(page + 1) * 25 >= total}
-                onClick={() => setPage((p) => p + 1)}>
+              <button
+                type="button"
+                disabled={(page + 1) * 25 >= total}
+                onClick={() => setPage((p) => p + 1)}
+              >
                 {t("notes.next")}
               </button>
             </div>
@@ -263,19 +302,30 @@ export function NotesMode() {
             onChange={(event) => setContent(event.target.value)}
           />
           <div className="flex gap-2 flex-wrap">
-            <button type="button" disabled={!client || busy || !dirty || !title.trim() || !content.trim()}
+            <button
+              type="button"
+              disabled={
+                !client || busy || !dirty || !title.trim() || !content.trim()
+              }
               onClick={() => void save()}
-              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
               <Save size={16} /> {t("notes.save")}
             </button>
-            <button type="button" disabled={!client || busy || !note}
+            <button
+              type="button"
+              disabled={!client || busy || !note}
               onClick={() => void analyze()}
-              className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
+              className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
+            >
               <Sparkles size={16} /> {t("notes.analyze")}
             </button>
-            <button type="button" disabled={!client || busy || !note}
+            <button
+              type="button"
+              disabled={!client || busy || !note}
               onClick={() => void remove()}
-              className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
+              className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
+            >
               <Trash2 size={16} /> {t("notes.delete")}
             </button>
           </div>
@@ -289,8 +339,12 @@ export function NotesMode() {
               <h2 className="font-semibold">{t("notes.analysis")}</h2>
               {note.analysis.sections.map((section, index) => (
                 <div key={index}>
-                  <h3 className="text-sm font-medium">{section.heading ?? ""}</h3>
-                  <p className="text-sm whitespace-pre-wrap">{section.content ?? ""}</p>
+                  <h3 className="text-sm font-medium">
+                    {section.heading ?? ""}
+                  </h3>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {section.content ?? ""}
+                  </p>
                 </div>
               ))}
               <h3 className="text-sm font-medium">{t("notes.keyPoints")}</h3>
@@ -299,9 +353,15 @@ export function NotesMode() {
                   <p>{point.text}</p>
                   <div className="text-xs text-ink-3 flex flex-wrap gap-2">
                     {point.source_ids.map((id) => {
-                      const source = note.sources.find((entry) => entry.id === id);
+                      const source = note.sources.find(
+                        (entry) => entry.id === id,
+                      );
                       return (
-                        <span key={id} title={source?.text ?? ""} className="underline">
+                        <span
+                          key={id}
+                          title={source?.text ?? ""}
+                          className="underline"
+                        >
                           {id}: {source?.text ?? ""}
                         </span>
                       );
@@ -309,9 +369,13 @@ export function NotesMode() {
                   </div>
                 </div>
               ))}
-              <h3 className="text-sm font-medium">{t("notes.reviewQuestions")}</h3>
+              <h3 className="text-sm font-medium">
+                {t("notes.reviewQuestions")}
+              </h3>
               {note.analysis.review_questions.map((question, i) => (
-                <p className="text-sm" key={i}>{question}</p>
+                <p className="text-sm" key={i}>
+                  {question}
+                </p>
               ))}
               <p className="text-xs text-ink-3">{t("notes.review")}</p>
             </div>

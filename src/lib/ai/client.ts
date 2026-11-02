@@ -160,5 +160,4 @@ export class HandyAiClient {
     if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid note ID");
     return this.request<void>("/v1/notes/" + id, { method: "DELETE" });
   }
-
 }

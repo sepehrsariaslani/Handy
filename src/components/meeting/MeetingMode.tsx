@@ -543,9 +543,12 @@ export const MeetingMode = () => {
             </button>
           )}
           {job.status === "completed" && job.insights && (
-            <button type="button" disabled={busy || !apiKey}
+            <button
+              type="button"
+              disabled={busy || !apiKey}
               onClick={() => void importAsNote()}
-              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            >
               <BookOpenText size={16} /> {t("notes.importMeeting")}
             </button>
           )}
