@@ -54,18 +54,21 @@ class TaskStore:
 
     def get(self, task_id: str):
         with self.connect() as db:
-            item = db.execute("SELECT * FROM action_tasks WHERE id=?", (task_id,)).fetchone()
+            item = db.execute("""SELECT t.*, j.title AS source_meeting_title,
+                j.meeting_date AS source_meeting_date FROM action_tasks t
+                LEFT JOIN meeting_jobs j ON j.id=t.source_meeting_id WHERE t.id=?""", (task_id,)).fetchone()
         return self._read(item) if item else None
 
     def list(self, status: str | None = None, offset: int = 0, limit: int = 50):
         with self.connect() as db:
-            where = "WHERE status=?" if status else ""
+            where = "WHERE t.status=?" if status else ""
             args = [status] if status else []
-            rows = db.execute(f"""SELECT * FROM action_tasks {where}
-                ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-                         due_date ASC,updated_at DESC LIMIT ? OFFSET ?""",
+            rows = db.execute(f"""SELECT t.*, j.title AS source_meeting_title, j.meeting_date AS source_meeting_date
+                FROM action_tasks t LEFT JOIN meeting_jobs j ON j.id=t.source_meeting_id {where}
+                ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
+                         t.due_date ASC,t.updated_at DESC LIMIT ? OFFSET ?""",
                 (*args,limit,offset)).fetchall()
-            total = db.execute(f"SELECT COUNT(*) FROM action_tasks {where}", args).fetchone()[0]
+            total = db.execute(f"SELECT COUNT(*) FROM action_tasks t {where}", args).fetchone()[0]
         return {"items":[self._read(item) for item in rows],"total":total}
 
     def create(self, title: str, assignee: str | None, due_date: str | None):
@@ -98,47 +101,56 @@ class TaskStore:
         with self.connect() as db:
             return bool(db.execute("DELETE FROM action_tasks WHERE id=?", (task_id,)).rowcount)
 
-    def import_meeting(self, meeting_id: str) -> dict:
-        # One transaction makes repeated clicks and concurrent imports idempotent.
+    def import_meeting(self, meeting_id: str, connection: sqlite3.Connection | None = None) -> dict:
+        if connection is not None:
+            return self._import_meeting(connection, meeting_id)
         with self.connect() as db:
-            job = db.execute(
-                "SELECT status,insights FROM meeting_jobs WHERE id=?", (meeting_id,)
-            ).fetchone()
-            if job is None:
-                raise KeyError("Meeting not found")
-            if job["status"] != "completed" or not job["insights"]:
-                raise ValueError("Meeting analysis is not complete")
-            insights = MeetingAnalysis.model_validate_json(job["insights"])
-            created = 0
-            for idx, task in enumerate(insights.tasks):
-                if not task.source_ids:
-                    continue
-                cited = list(dict.fromkeys(task.source_ids))
-                if len(cited) > 20:
-                    continue
-                marks = ",".join("?" for _ in cited)
-                quoted = db.execute(
-                    "SELECT id,text FROM meeting_segments WHERE job_id=? AND id IN (" +
-                    marks + ")", (meeting_id, *cited)
-                ).fetchall()
-                if len(quoted) != len(cited):
-                    continue
-                quotes = [{"id":row["id"],"text":row["text"][:1200]} for row in quoted]
-                stamp = now()
-                inserted = db.execute("""INSERT OR IGNORE INTO action_tasks
-                    (id,title,assignee,due_date,source_meeting_id,source_index,
-                     source_ids,source_quotes,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)""",(
-                    uuid4().hex,task.text[:500],task.assignee[:120] if task.assignee else None,
-                    task.due_date[:32] if task.due_date else None,
-                    meeting_id,idx,json.dumps(cited,ensure_ascii=False),
-                    json.dumps(quotes,ensure_ascii=False),stamp,stamp
-                ))
-                created += inserted.rowcount
-        return {"created":created,"tasks":self.by_meeting(meeting_id)}
+            return self._import_meeting(db, meeting_id)
+
+    def _import_meeting(self, db: sqlite3.Connection, meeting_id: str) -> dict:
+        job = db.execute(
+            "SELECT status,insights FROM meeting_jobs WHERE id=?", (meeting_id,)
+        ).fetchone()
+        if job is None:
+            raise KeyError("Meeting not found")
+        if job["status"] != "completed" or not job["insights"]:
+            raise ValueError("Meeting analysis is not complete")
+        insights = MeetingAnalysis.model_validate_json(job["insights"])
+        created = 0
+        for idx, task in enumerate(insights.tasks):
+            if not task.source_ids:
+                continue
+            cited = list(dict.fromkeys(task.source_ids))
+            if len(cited) > 20:
+                continue
+            marks = ",".join("?" for _ in cited)
+            quoted = db.execute(
+                "SELECT id,text FROM meeting_segments WHERE job_id=? AND id IN (" +
+                marks + ")", (meeting_id, *cited)
+            ).fetchall()
+            if len(quoted) != len(cited):
+                continue
+            quotes = [{"id":row["id"],"text":row["text"][:1200]} for row in quoted]
+            stamp = now()
+            inserted = db.execute("""INSERT OR IGNORE INTO action_tasks
+                (id,title,assignee,due_date,source_meeting_id,source_index,
+                 source_ids,source_quotes,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",(
+                uuid4().hex,task.text[:500],task.assignee[:120] if task.assignee else None,
+                task.due_date[:32] if task.due_date else None,
+                meeting_id,idx,json.dumps(cited,ensure_ascii=False),
+                json.dumps(quotes,ensure_ascii=False),stamp,stamp
+            ))
+            created += inserted.rowcount
+        rows = db.execute("""SELECT t.*,j.title AS source_meeting_title,
+            j.meeting_date AS source_meeting_date FROM action_tasks t
+            LEFT JOIN meeting_jobs j ON j.id=t.source_meeting_id
+            WHERE t.source_meeting_id=? ORDER BY t.source_index""", (meeting_id,)).fetchall()
+        return {"created": created, "tasks": [self._read(row) for row in rows]}
 
     def by_meeting(self, meeting_id: str):
         with self.connect() as db:
-            items = db.execute("""SELECT * FROM action_tasks WHERE source_meeting_id=?
-                ORDER BY source_index""",(meeting_id,)).fetchall()
+            items = db.execute("""SELECT t.*,j.title AS source_meeting_title,j.meeting_date AS source_meeting_date
+                FROM action_tasks t LEFT JOIN meeting_jobs j ON j.id=t.source_meeting_id
+                WHERE t.source_meeting_id=? ORDER BY t.source_index""",(meeting_id,)).fetchall()
         return [self._read(row) for row in items]

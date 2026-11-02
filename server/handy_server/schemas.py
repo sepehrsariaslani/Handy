@@ -66,6 +66,8 @@ class Evidence(StrictModel):
 
 class MeetingAnalysis(StrictModel):
     summary: str
+    title: str | None = Field(default=None, max_length=180)
+    meeting_date: str | None = None
     decisions: list[Evidence] = Field(default_factory=list)
     tasks: list[Evidence] = Field(default_factory=list)
     open_questions: list[Evidence] = Field(default_factory=list)
@@ -146,6 +148,8 @@ class MeetingUtterance(StrictModel):
 
 class MeetingJob(StrictModel):
     id: str
+    title: str | None = None
+    meeting_date: str | None = None
     status: Literal["queued", "processing", "completed", "failed"]
     stage: str | None = None
     error: str | None = None

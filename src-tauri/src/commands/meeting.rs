@@ -15,6 +15,10 @@ const FLUSH_EVERY_SAMPLES: u64 = SAMPLE_RATE as u64 * 5;
 pub struct MeetingInfo {
     pub id: String,
     pub started_at: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub meeting_date: Option<String>,
     pub audio_path: String,
     pub bytes: u64,
     pub status: String,
@@ -50,6 +54,8 @@ pub struct MeetingInsights {
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct MeetingJob {
     pub id: String,
+    pub title: Option<String>,
+    pub meeting_date: Option<String>,
     pub status: String,
     pub stage: Option<String>,
     pub error: Option<String>,
@@ -198,7 +204,17 @@ fn get_info(path: &Path) -> Result<MeetingInfo, String> {
 pub fn start_meeting(
     app: AppHandle,
     state: State<'_, MeetingState>,
+    title: Option<String>,
+    meeting_date: Option<String>,
 ) -> Result<MeetingInfo, String> {
+    let title = title.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+    if title.as_ref().is_some_and(|s| s.chars().count() > 180) {
+        return Err("Meeting title is too long".into());
+    }
+    if let Some(ref value) = meeting_date {
+        chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map_err(|_| "Invalid meeting date (YYYY-MM-DD)")?;
+    }
     let mut active = state.active.lock().map_err(|e| e.to_string())?;
     if active.is_some() {
         return Err("A meeting is already recording".to_owned());
@@ -217,6 +233,8 @@ pub fn start_meeting(
     let mut info = MeetingInfo {
         id,
         started_at: Utc::now().to_rfc3339(),
+        title,
+        meeting_date,
         audio_path: audio_path.to_string_lossy().to_string(),
         bytes: 0,
         status: "recording".to_owned(),
@@ -382,6 +400,34 @@ pub fn list_meetings(
     Ok(meetings)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn update_meeting_metadata(
+    app: AppHandle,
+    id: String,
+    title: Option<String>,
+    meeting_date: Option<String>,
+) -> Result<MeetingInfo, String> {
+    if id.is_empty() || id.len() > 80 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("Invalid meeting ID".into());
+    }
+    let directory = meeting_dir(&app)?.join(&id);
+    let mut info = get_info(&directory)?;
+    // Never replace an explicit title/date. Only fill the blanks after Qwen.
+    if info.title.is_none() {
+        info.title = title
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty() && s.chars().count() <= 180);
+    }
+    if info.meeting_date.is_none() {
+        info.meeting_date =
+            meeting_date.filter(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok());
+    }
+    write_info(&directory, &info)?;
+    Ok(info)
+}
+
 /// Return the existing local development API token only for the exact loopback
 /// Handy endpoint. Never expose the token for a user-supplied remote URL.
 #[tauri::command]
@@ -468,6 +514,8 @@ pub async fn submit_meeting(
     let mut request = http.post(root.clone()).json(&serde_json::json!({
         "meeting_id": id,
         "total_bytes": audio_size,
+        "title": info.title,
+        "meeting_date": info.meeting_date,
     }));
     if let Some(key) = auth {
         request = request.bearer_auth(key);

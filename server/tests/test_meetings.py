@@ -122,6 +122,11 @@ def test_meeting_upload_and_evidence(engine):
     assert result["transcript"][1]["start"] == 30
     assert result["insights"]["tasks"][0]["assignee"] == "علی"
     assert result["insights"]["tasks"][0]["source_ids"] == ["u00000001"]
+    saved = client.get("/v1/tasks", headers=HEADERS).json()
+    assert saved["total"] == 1
+    assert saved["items"][0]["source_meeting_id"] == job["id"]
+    assert saved["items"][0]["source_quotes"][0]["id"] == "u00000001"
+    assert saved["items"][0]["source_meeting_title"] == result["title"]
     assert result["insights"]["open_questions"] == []
     page = client.get(
         "/v1/meetings/" + job["id"] + "/transcript?offset=1&limit=1",

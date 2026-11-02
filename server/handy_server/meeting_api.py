@@ -1,5 +1,6 @@
 """Authenticated, disk-streamed meeting upload and progress/pagination API."""
 from pathlib import Path
+from datetime import date
 import re
 from uuid import uuid4
 
@@ -20,6 +21,8 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
         audio: UploadFile = File(...),
         meeting_id: str | None = Form(default=None),
         language: str | None = Form(default=None),
+        title: str | None = Form(default=None, max_length=180),
+        meeting_date: date | None = Form(default=None),
     ):
         if meeting_id is not None and not REF.fullmatch(meeting_id):
             raise HTTPException(status_code=422, detail="Invalid meeting reference")
@@ -51,7 +54,8 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
             except ValueError:
                 raise HTTPException(status_code=422, detail="Invalid 16kHz mono PCM16 meeting WAV") from None
             created = await __import__("asyncio").to_thread(
-                store.create, location, duration, meeting_id, language
+                store.create, location, duration, meeting_id, language,
+                title, meeting_date.isoformat() if meeting_date else None
             )
             if created["audio_path"] != str(location):
                 location.unlink(missing_ok=True)
