@@ -9,9 +9,11 @@ import {
   Server,
   FileAudio,
   ClipboardList,
+  BookOpenText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { HandyAiClient } from "@/lib/ai/client";
 
 type MeetingInfo = {
   id: string;
@@ -219,6 +221,20 @@ export const MeetingMode = () => {
       setJob(result);
     } catch (error) {
       toast.error(readError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importAsNote = async () => {
+    if (!job || !job.insights || !apiKey || busy) return;
+    setBusy(true);
+    try {
+      const client = new HandyAiClient(serverUrl, apiKey);
+      await client.importMeetingNote(job.id);
+      toast.success(t("notes.imported"));
+    } catch (error) {
+      toast.error(t("notes.importFailed"), { description: readError(error) });
     } finally {
       setBusy(false);
     }
@@ -524,6 +540,13 @@ export const MeetingMode = () => {
               className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
             >
               {t("meeting.retry")}
+            </button>
+          )}
+          {job.status === "completed" && job.insights && (
+            <button type="button" disabled={busy || !apiKey}
+              onClick={() => void importAsNote()}
+              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+              <BookOpenText size={16} /> {t("notes.importMeeting")}
             </button>
           )}
           {job.insights && (
