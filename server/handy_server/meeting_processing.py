@@ -97,12 +97,14 @@ class MeetingProcessor:
             )
             window_started = monotonic()
             LOG.info(
-                "meeting.asr.start job=%s offset_seconds=%.1f duration_seconds=%.1f requested_language=%s backend=%s",
+                "meeting.asr.start job=%s offset_seconds=%.1f duration_seconds=%.1f requested_language=%s backend=%s model=%s",
                 job_id, position / RATE, actual / RATE, job["language"] or "auto",
-                self.runtime.settings.asr_backend,
+                self.runtime.settings.asr_backend, job.get("asr_model_id") or "default",
             )
             try:
-                segments, language = await self.runtime.transcribe(window, job["language"])
+                segments, language = await self.runtime.transcribe(
+                    window, job["language"], job.get("asr_model_id")
+                )
             finally:
                 window.unlink(missing_ok=True)
             LOG.info(
