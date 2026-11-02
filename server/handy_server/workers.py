@@ -224,7 +224,12 @@ class GgufWhisperWorker:
                         id="s000001", start=0, end=duration, speaker=None,
                         raw_text=text.strip(), clean_text=None, final=True,
                     )]
-                return segments, language
+                reported = result.get("language")
+                if not isinstance(reported, str):
+                    # Qwen3-ASR performs auto-detection; do not misrepresent a
+                    # user language preference as a model-detected language.
+                    reported = None if is_qwen_asr else language
+                return segments, reported
             except (ValueError, TypeError, KeyError, AttributeError, wave.Error,
                     json.JSONDecodeError):
                 logger.warning("GGUF CLI returned an invalid result")
