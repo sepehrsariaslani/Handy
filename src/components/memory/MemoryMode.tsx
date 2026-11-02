@@ -20,7 +20,11 @@ import type {
   AiConversationTurn,
   AiSemanticStatus,
 } from "@/lib/ai/contracts";
-import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import {
+  LOCAL_AI_TEST_MODE,
+  loadServerUrl,
+  saveServerUrl,
+} from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const errorText = (error: unknown) =>
@@ -259,6 +263,7 @@ export function MemoryMode() {
         <p className="text-sm text-ink-3 mt-1">{t("memory.intro")}</p>
       </header>
 
+      {!LOCAL_AI_TEST_MODE && (
       <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           {t("memory.serverUrl")}
@@ -292,6 +297,7 @@ export function MemoryMode() {
         </label>
         <p className="text-xs text-ink-3">{t("memory.privacy")}</p>
       </section>
+      )}
 
       <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
         <div className="flex flex-wrap gap-2 items-center justify-between">
