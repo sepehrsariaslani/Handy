@@ -212,7 +212,7 @@ export function TasksMode() {
           </div>
 
           <div className="flex flex-col gap-2">
-            {groups.map((group, index) => (
+            {groups.map((group) => (
               <details key={group.key} defaultOpen={index === 0}
                 className="rounded-xl border border-line overflow-hidden group">
                 <summary className="cursor-pointer list-none flex items-center justify-between gap-3 p-3 hover:bg-wash/30">
