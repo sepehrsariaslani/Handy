@@ -101,6 +101,39 @@ def test_websocket_partial_and_final_flow(fixture):
         context.__exit__(None, None, None)
 
 
+def test_note_taking_mode_streams_cleaned_text_and_persists_note(fixture):
+    client, _, _ = fixture
+    session = client.post(
+        "/v1/sessions", json={"mode": "note_taking", "language": "fa"},
+        headers=AUTH,
+    ).json()
+    sid = session["id"]
+    with client.websocket_connect("/v1/stream/" + sid) as ws:
+        ws.send_json({
+            "type": "hello", "token": KEY, "language": "fa",
+            "cleanup": True, "tone": "professional",
+        })
+        assert ws.receive_json()["type"] == "ready"
+        chunk(ws, 0)
+        assert ws.receive_json()["type"] == "ack"
+        assert ws.receive_json()["type"] == "partial"
+        completed = ws.receive_json()
+        assert completed["type"] == "final"
+        assert completed["segment"]["clean_text"].endswith(".")
+        ws.send_json({"type": "finish"})
+        assert ws.receive_json()["type"] == "complete"
+
+    saved = client.post(
+        "/v1/notes",
+        json={"title": "Voice note", "content": completed["segment"]["clean_text"]},
+        headers=AUTH,
+    )
+    assert saved.status_code == 201
+    note = saved.json()
+    assert note["content"] == completed["segment"]["clean_text"]
+    assert client.get("/v1/notes/" + note["id"], headers=AUTH).status_code == 200
+
+
 def test_reconnect_replay_and_duplicate_does_not_reinfer(fixture):
     client, sid, asr = fixture
     context, ws = connect(client, sid)
