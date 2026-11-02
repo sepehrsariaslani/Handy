@@ -1,6 +1,7 @@
 """Bounded-memory meeting transcription pipeline, safe restart, and background worker."""
 import asyncio
 import logging
+from time import monotonic
 from pathlib import Path
 import tempfile
 import wave
@@ -9,10 +10,11 @@ from .diarization import Diarizer, label_segments
 from .meeting_store import MeetingStore
 from .meeting_analysis import QwenMeetingAnalyzer
 from .workers import WorkerUnavailable, WorkerFailure
+from .schemas import CleanupRequest, Tone, MeetingAnalysis
 
 LOG = logging.getLogger(__name__)
 RATE = 16000
-WINDOW_SECONDS = 30
+WINDOW_SECONDS = 120  # Match the normal full-file ASR context more closely.
 
 def validated_duration(path: Path, max_seconds: int = 20 * 3600) -> float:
     try:
@@ -76,6 +78,8 @@ class MeetingProcessor:
 
     async def process(self, job: dict):
         job_id = job["id"]
+        started = monotonic()
+        LOG.info("meeting.started job=%s kind=%s duration_seconds=%.1f", job_id, job.get("kind", "meeting"), job["duration"])
         audio_path = Path(job["audio_path"])
         if not await self.runtime.asr_ready():
             raise WorkerUnavailable("Whisper Large V3 not loaded")
@@ -133,7 +137,6 @@ class MeetingProcessor:
                     await asyncio.to_thread(self.store.update_speakers, job_id, names)
                     offset += len(page)
 
-        await asyncio.to_thread(self.store.stage, job_id, "summarizing")
         utterances = []
         offset = 0
         while True:
@@ -142,5 +145,54 @@ class MeetingProcessor:
                 break
             utterances.extend(page)
             offset += len(page)
-        insights = await self.analyzer.analyze(utterances)
-        await asyncio.to_thread(self.store.complete, job_id, insights)
+
+        # Use the SAME Whisper runtime as /v1/transcriptions, then Qwen's
+        # shared text cleanup after Stop. Never use low-context live chunks.
+        await asyncio.to_thread(self.store.stage, job_id, "polishing")
+        chunks = []
+        current = []
+        length = 0
+        cap = min(5500, max(300, self.runtime.settings.max_text_chars))
+        for row in utterances:
+            line = row["text"].strip()
+            if not line:
+                continue
+            if current and length + len(line) + 1 > cap:
+                chunks.append("\n".join(current))
+                current = []
+                length = 0
+            current.append(line)
+            length += len(line) + 1
+        if current:
+            chunks.append("\n".join(current))
+
+        polished = []
+        can_clean = await self.runtime.llm_ready()
+        for index, text in enumerate(chunks):
+            if can_clean:
+                try:
+                    edited = await self.runtime.cleanup(CleanupRequest(
+                        text=text,
+                        tone=Tone.professional,
+                        language=job.get("language") or (
+                            "fa" if sum("\u0600" <= ch <= "\u06ff" for ch in text) > len(text) // 6 else None
+                        ),
+                    ))
+                    polished.append(edited.clean_text)
+                except (WorkerFailure, WorkerUnavailable, ValueError) as exc:
+                    LOG.warning("meeting.cleanup_fallback job=%s block=%d error=%s",
+                                job_id, index, type(exc).__name__)
+                    polished.append(text)
+            else:
+                polished.append(text)
+
+        if job.get("kind", "meeting") == "note":
+            # Notes are saved automatically, including after closing the UI.
+            # A missing Qwen service must not lose the Whisper transcript.
+            insights = None
+        else:
+            await asyncio.to_thread(self.store.stage, job_id, "summarizing")
+            insights = await self.analyzer.analyze(utterances)
+        await asyncio.to_thread(self.store.complete, job_id, insights, polished)
+        LOG.info("meeting.completed job=%s segments=%d polished_blocks=%d elapsed_ms=%d",
+                 job_id, len(utterances), len(polished), int((monotonic()-started)*1000))
