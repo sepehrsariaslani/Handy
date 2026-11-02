@@ -1,5 +1,6 @@
 """Authenticated resumable meeting upload endpoints (4 MiB parts)."""
 import asyncio
+from datetime import date
 from pathlib import Path
 import os
 import re
@@ -17,6 +18,8 @@ class BeginUpload(BaseModel):
     meeting_id: str = Field(min_length=1, max_length=80)
     total_bytes: int = Field(gt=44)
     language: str | None = Field(default=None, max_length=35)
+    title: str | None = Field(default=None, max_length=180)
+    meeting_date: date | None = None
 
 def attach_upload_routes(app: FastAPI, config, meetings, require_auth):
     uploads = UploadStore(Path(config.db_path))
@@ -33,7 +36,8 @@ def attach_upload_routes(app: FastAPI, config, meetings, require_auth):
             return {"id": None, "offset": body.total_bytes,
                     "total_bytes": body.total_bytes, "job_id": existing["id"]}
         try:
-            row = uploads.start(body.meeting_id, body.total_bytes, body.language)
+            row = uploads.start(body.meeting_id, body.total_bytes, body.language,
+                                body.title, body.meeting_date.isoformat() if body.meeting_date else None)
         except UploadError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
         return {"id": row["id"], "offset": row["received_bytes"],
@@ -93,7 +97,8 @@ def attach_upload_routes(app: FastAPI, config, meetings, require_auth):
             if source != destination:
                 os.replace(source, destination)
             created = meetings.create(
-                destination, duration, row["client_ref"], row["language"]
+                destination, duration, row["client_ref"], row["language"],
+                row["title"], row["meeting_date"]
             )
             uploads.completed(uid, created["id"], destination)
             return meetings.response(created["id"])
