@@ -56,6 +56,7 @@ type Insights = {
 type MeetingJob = {
   id: string;
   clean_text?: string | null;
+  cleaned_block_count?: number;
   asr_model_id?: string | null;
   title?: string | null;
   meeting_date?: string | null;
@@ -180,6 +181,107 @@ export const MeetingMode = () => {
       window.clearInterval(timer);
     };
   }, [jobId, authToken, serverUrl, job?.status]);
+
+  // The job summary contains just the first cleaned block for bounded API
+  // responses. Automatically page through ALL blocks so the ending of a
+  // long meeting never disappears behind a manual "Show more" click.
+  useEffect(() => {
+    if (
+      !job?.id ||
+      !job.clean_text ||
+      !authToken ||
+      (job.status !== "completed" && job.status !== "failed")
+    )
+      return;
+    let cancelled = false;
+    const loadFullCleaned = async () => {
+      setPolishedLoading(true);
+      try {
+        const client = new HandyAiClient(serverUrl, authToken);
+        const all: string[] = [];
+        let offset = 0;
+        while (!cancelled) {
+          const page = await client.getCleanedTranscript(job.id, offset, 10);
+          if (cancelled) return;
+          if (page.items.length === 0) {
+            if (offset < page.total)
+              throw new Error("Incomplete cleaned transcript page");
+            break;
+          }
+          all.push(...page.items);
+          offset += page.items.length;
+          setPolishedParts([...all]);
+          setPolishedTotal(page.total);
+          if (offset >= page.total) break;
+        }
+      } catch (error) {
+        if (!cancelled) toast.error(readError(error));
+      } finally {
+        if (!cancelled) setPolishedLoading(false);
+      }
+    };
+    void loadFullCleaned();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id, job?.status, job?.clean_text, authToken, serverUrl]);
+
+  // A job summary likewise returns only the first 150 raw utterances.
+  // Fetch the remaining transcript automatically when processing finishes.
+  useEffect(() => {
+    if (
+      !job?.id ||
+      !authToken ||
+      (job.status !== "completed" && job.status !== "failed") ||
+      (job.transcript?.length ?? 0) >= (job.transcript_count ?? 0)
+    )
+      return;
+    let cancelled = false;
+    const loadFullRaw = async () => {
+      setLoadingMore(true);
+      try {
+        const all = [...(job.transcript ?? [])];
+        let offset = all.length;
+        while (!cancelled && offset < (job.transcript_count ?? 0)) {
+          const page = await invoke<TranscriptPage>("get_meeting_transcript", {
+            serverUrl,
+            apiKey: authToken,
+            jobId: job.id,
+            offset,
+            limit: 150,
+          });
+          if (cancelled) return;
+          if (page.items.length === 0)
+            throw new Error("Incomplete raw transcript page");
+          all.push(...page.items);
+          offset += page.items.length;
+          const combined = new Map(
+            all.map((part) => [part.id, part] as const),
+          );
+          setJob((current) =>
+            current?.id === job.id
+              ? {
+                  ...current,
+                  transcript: [...combined.values()].sort(
+                    (a, b) => a.start - b.start,
+                  ),
+                  transcript_count: page.total,
+                }
+              : current,
+          );
+          setVisibleCount(offset);
+        }
+      } catch (error) {
+        if (!cancelled) toast.error(readError(error));
+      } finally {
+        if (!cancelled) setLoadingMore(false);
+      }
+    };
+    void loadFullRaw();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id, job?.status, job?.transcript_count, authToken, serverUrl]);
 
   // Fill missing local metadata only after the model has completed processing.
   useEffect(() => {
@@ -789,8 +891,17 @@ export const MeetingMode = () => {
                   "\n\n",
                 )}
               </p>
-              {(polishedParts.length === 0 ||
-                polishedParts.length < polishedTotal) && (
+              {polishedLoading && (
+                <p className="text-xs text-ink-3">
+                  {t("meeting.loadingFullTranscript", {
+                    defaultValue: "Loading remaining transcript...",
+                  })}
+                </p>
+              )}
+              {!polishedLoading &&
+                (polishedParts.length === 0 ||
+                  polishedParts.length <
+                    (polishedTotal || job.cleaned_block_count || 0)) && (
                 <button
                   type="button"
                   disabled={polishedLoading}
