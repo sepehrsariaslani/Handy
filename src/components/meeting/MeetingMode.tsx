@@ -2,110 +2,85 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import {
-  Mic,
-  UploadCloud,
-  RefreshCw,
-  Server,
-  FileAudio,
-  ClipboardList,
-  BookOpenText,
-  ListTodo,
-} from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, Mic, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import {
-  LOCAL_AI_TEST_MODE,
-  loadServerUrl,
-  saveServerUrl,
-} from "@/lib/ai/serverConfig";
+import { LOCAL_AI_TEST_MODE, loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
-import { HandyAiClient } from "@/lib/ai/client";
 import { RecordingPill } from "@/components/ui/RecordingPill";
 
 type MeetingInfo = {
   id: string;
   started_at: string;
+  title: string | null;
+  meeting_date: string | null;
   audio_path: string;
   bytes: number;
   status: "recording" | "ready" | "incomplete" | "interrupted";
   remote_job_id: string | null;
   remote_server_url: string | null;
 };
-
-type Utterance = {
-  id: string;
-  speaker: string;
-  start: number;
-  end: number;
-  text: string;
-};
-
+type Utterance = { id: string; speaker: string; start: number; end: number; text: string };
 type Evidence = {
   text: string;
   source_ids: string[];
   assignee?: string | null;
   due_date?: string | null;
 };
-
 type Insights = {
   summary: string;
   decisions: Evidence[];
   tasks: Evidence[];
   open_questions: Evidence[];
 };
-
 type MeetingJob = {
   id: string;
+  title?: string | null;
+  meeting_date?: string | null;
   status: "queued" | "processing" | "completed" | "failed";
   stage?: string;
   error?: string | null;
   transcript?: Utterance[];
-  insights?: Insights;
+  insights?: Insights | null;
   duration?: number;
   processed_seconds?: number;
   transcript_count?: number;
 };
-
-type TranscriptPage = {
-  items: Utterance[];
-  offset: number;
-  total: number;
-};
+type TranscriptPage = { items: Utterance[]; offset: number; total: number };
 
 const readError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
-
-const formatTime = (seconds: number) => {
-  const minutes = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return [Math.floor(minutes / 60), minutes % 60, secs]
-    .map((n) => String(n).padStart(2, "0"))
-    .join(":");
-};
+const clock = (seconds: number) =>
+  [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.floor(seconds % 60)]
+    .map((part) => String(part).padStart(2, "0")).join(":");
 
 export const MeetingMode = () => {
   const { t } = useTranslation();
   const [meetings, setMeetings] = useState<MeetingInfo[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftDate, setDraftDate] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [level, setLevel] = useState(0);
-  const [autoProcessing, setAutoProcessing] = useState(false);
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
-  // Token stays in memory; never store it in web storage or application logs.
   const [apiKey, setApiKey] = useState("");
   const localApiKey = useLocalAiApiKey(serverUrl);
   const authToken = apiKey.trim() || localApiKey;
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<MeetingJob | null>(null);
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
   const [visibleCount, setVisibleCount] = useState(150);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [sourcePreview, setSourcePreview] = useState<Utterance | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
+  const [sourcePreview, setSourcePreview] = useState<Utterance | null>(null);
+  const selected = meetings.find((meeting) => meeting.id === selectedId) ?? null;
+  const recording = Boolean(currentId && currentId === selectedId);
   const speakers = useMemo(
-    () => [...new Set(job?.transcript?.map((entry) => entry.speaker) ?? [])],
+    () => [...new Set(job?.transcript?.map((part) => part.speaker) ?? [])],
     [job?.transcript],
   );
 
@@ -114,14 +89,17 @@ export const MeetingMode = () => {
     setMeetings(result);
     const active = result.find((item) => item.status === "recording");
     setCurrentId(active?.id ?? null);
+    if (active) {
+      setSelectedId((old) => old ?? active.id);
+      setExpanded(true);
+    }
   }, []);
 
   useEffect(() => {
     void refresh().catch((error) => toast.error(readError(error)));
   }, [refresh]);
 
-  // The native meeting recorder sends actual RMS levels from the same audio
-  // sink that writes the durable WAV. No second microphone is opened.
+  // Reuse the recording sink's RMS signal; never open a second microphone.
   useEffect(() => {
     let active = true;
     let unlisten: (() => void) | undefined;
@@ -131,10 +109,7 @@ export const MeetingMode = () => {
       if (active) unlisten = stop;
       else stop();
     });
-    return () => {
-      active = false;
-      unlisten?.();
-    };
+    return () => { active = false; unlisten?.(); };
   }, []);
 
   useEffect(() => {
@@ -143,38 +118,100 @@ export const MeetingMode = () => {
     const load = async () => {
       try {
         const result = await invoke<MeetingJob>("get_meeting_job", {
-          serverUrl,
-          apiKey: authToken || null,
-          jobId,
+          serverUrl, apiKey: authToken, jobId,
         });
-        if (alive)
-          setJob((current) =>
-            current?.id === result.id &&
-            (current.transcript?.length ?? 0) > (result.transcript?.length ?? 0)
-              ? { ...result, transcript: current.transcript }
-              : result,
-          );
+        if (!alive) return;
+        setJob((previous) =>
+          previous?.id === result.id &&
+          (previous.transcript?.length ?? 0) > (result.transcript?.length ?? 0)
+            ? { ...result, transcript: previous.transcript }
+            : result,
+        );
+        if (result.status === "completed" || result.status === "failed") {
+          window.clearInterval(timer);
+        }
       } catch (error) {
         if (alive) toast.error(readError(error));
       }
     };
+    const timer = window.setInterval(() => void load(), 5000);
     void load();
-    const timer = window.setInterval(() => {
-      if (job?.status !== "completed" && job?.status !== "failed") {
-        void load();
-      }
-    }, 5000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [authToken, jobId, job?.status, serverUrl]);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [jobId, authToken, serverUrl]);
+
+  // Fill missing local metadata only after the model has completed processing.
+  useEffect(() => {
+    if (!job || job.status !== "completed" || !selected || selected.remote_job_id !== job.id) return;
+    if ((selected.title || !job.title) && (selected.meeting_date || !job.meeting_date)) return;
+    let alive = true;
+    void invoke<MeetingInfo>("update_meeting_metadata", {
+      id: selected.id, title: job.title || null, meetingDate: job.meeting_date || null,
+    }).then(() => { if (alive) void refresh(); })
+      .catch((error) => { if (alive) toast.error(readError(error)); });
+    return () => { alive = false; };
+  }, [job, selected, refresh]);
+
+  const resetResult = () => {
+    setJob(null);
+    setJobId(null);
+    setSpeakerNames({});
+    setVisibleCount(150);
+    setTranscriptOpen(false);
+    setSourcePreview(null);
+  };
+
+  const upload = async (meeting: MeetingInfo) => {
+    if (busy || uploading || !authToken || meeting.status !== "ready") return;
+    setUploading(true);
+    resetResult();
+    try {
+      const result = await invoke<MeetingJob>("submit_meeting", {
+        id: meeting.id, serverUrl, apiKey: authToken,
+      });
+      setJob(result);
+      setJobId(result.id);
+      await refresh();
+    } catch (error) {
+      toast.error(readError(error));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const newMeeting = () => {
+    if (currentId || busy || uploading) return;
+    setSelectedId(null);
+    setDraftTitle("");
+    setDraftDate("");
+    setConsent(false);
+    resetResult();
+    setExpanded(true);
+  };
+
+  const openMeeting = (meeting: MeetingInfo) => {
+    if (busy || uploading) return;
+    setSelectedId(meeting.id);
+    setDraftTitle(meeting.title || "");
+    setDraftDate(meeting.meeting_date || "");
+    resetResult();
+    setExpanded(true);
+    if (meeting.remote_job_id) {
+      setServerUrl(meeting.remote_server_url || serverUrl);
+      setJobId(meeting.remote_job_id);
+    } else if (meeting.status === "ready" && authToken) {
+      // Older offline recordings are resumed on open, not via Process.
+      void upload(meeting);
+    }
+  };
 
   const start = async () => {
-    if (!consent || busy) return;
+    if (!consent || busy || currentId) return;
     setBusy(true);
     try {
-      const info = await invoke<MeetingInfo>("start_meeting");
+      const info = await invoke<MeetingInfo>("start_meeting", {
+        title: draftTitle.trim() || null, meetingDate: draftDate || null,
+      });
+      setSelectedId(info.id);
       setCurrentId(info.id);
       await refresh();
     } catch (error) {
@@ -188,74 +225,41 @@ export const MeetingMode = () => {
     if (busy || !currentId) return;
     setBusy(true);
     try {
-      const meeting = await invoke<MeetingInfo>("stop_meeting");
+      const info = await invoke<MeetingInfo>("stop_meeting");
       setCurrentId(null);
       setLevel(0);
       setConsent(false);
       await refresh();
-
-      // Stop -> upload -> transcribe -> analyze with Qwen automatically.
-      // A failed upload never deletes the safely saved local recording;
-      // the Process button remains available for retry.
+      // A single Stop is sufficient: upload, Whisper, Qwen and task storage
+      // all happen without a user-visible Process or Import step.
       if (!authToken) {
-        toast.error(
-          "Local AI is not connected. Recording was saved for retry.",
-        );
+        toast.error("Recording saved locally. Connect your AI server to sync it.");
         return;
       }
-      setAutoProcessing(true);
-      setJob(null);
-      setJobId(null);
-      setVisibleCount(150);
+      setUploading(true);
+      resetResult();
       setTranscriptOpen(true);
-      setSpeakerNames({});
       const result = await invoke<MeetingJob>("submit_meeting", {
-        id: meeting.id,
-        serverUrl,
-        apiKey: authToken,
+        id: info.id, serverUrl, apiKey: authToken,
       });
-      setJobId(result.id);
       setJob(result);
+      setJobId(result.id);
+      await refresh();
     } catch (error) {
       toast.error(readError(error));
-      setCurrentId(null);
-      await refresh();
+      await refresh().catch(() => undefined);
     } finally {
-      setAutoProcessing(false);
+      setUploading(false);
       setBusy(false);
     }
   };
 
-  const recover = async (meeting: MeetingInfo) => {
-    if (busy || !window.confirm(t("meeting.recoverConfirm"))) return;
+  const recover = async () => {
+    if (!selected || busy || !window.confirm(t("meeting.recoverConfirm"))) return;
     setBusy(true);
     try {
-      await invoke<MeetingInfo>("recover_meeting", { id: meeting.id });
+      await invoke("recover_meeting", { id: selected.id });
       await refresh();
-    } catch (error) {
-      toast.error(readError(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const upload = async (meeting: MeetingInfo) => {
-    if (busy) return;
-    setBusy(true);
-    setJobId(null);
-    setJob(null);
-    setVisibleCount(150);
-    setTranscriptOpen(false);
-    setSpeakerNames({});
-    try {
-      const result = await invoke<MeetingJob>("submit_meeting", {
-        id: meeting.id,
-        serverUrl,
-        apiKey: authToken || null,
-      });
-      setJobId(result.id);
-      setJob(result);
-      toast.success(t("meeting.uploaded"));
     } catch (error) {
       toast.error(readError(error));
     } finally {
@@ -264,13 +268,11 @@ export const MeetingMode = () => {
   };
 
   const retry = async () => {
-    if (!jobId || busy) return;
+    if (!jobId || busy || !authToken) return;
     setBusy(true);
     try {
       const result = await invoke<MeetingJob>("retry_meeting_job", {
-        serverUrl,
-        apiKey: authToken || null,
-        jobId,
+        serverUrl, apiKey: authToken, jobId,
       });
       setJob(result);
     } catch (error) {
@@ -280,68 +282,29 @@ export const MeetingMode = () => {
     }
   };
 
-  const importAsNote = async () => {
-    if (!job || !job.insights || !authToken || busy) return;
-    setBusy(true);
-    try {
-      const client = new HandyAiClient(serverUrl, authToken);
-      await client.importMeetingNote(job.id);
-      toast.success(t("notes.imported"));
-    } catch (error) {
-      toast.error(t("notes.importFailed"), { description: readError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const importAsTasks = async () => {
-    if (
-      !job ||
-      job.status !== "completed" ||
-      !job.insights ||
-      !authToken ||
-      busy
-    )
-      return;
-    setBusy(true);
-    try {
-      const client = new HandyAiClient(serverUrl, authToken);
-      const imported = await client.importMeetingTasks(job.id);
-      toast.success(t("tasks.imported", { count: imported.created }));
-    } catch (error) {
-      toast.error(t("tasks.error"), { description: readError(error) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const loadMore = async () => {
-    if (!job || busy || loadingMore) return;
-    const count = job.transcript?.length ?? 0;
-    if (count >= (job.transcript_count ?? count)) {
-      setVisibleCount((current) => Math.min(current + 150, count));
+    if (!job || loadingMore) return;
+    const offset = job.transcript?.length ?? 0;
+    if (offset >= (job.transcript_count ?? offset)) {
+      setVisibleCount((current) => current + 150);
       return;
     }
     setLoadingMore(true);
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
-        serverUrl,
-        apiKey: authToken || null,
-        jobId: job.id,
-        offset: count,
-        limit: 150,
+        serverUrl, apiKey: authToken || null, jobId: job.id, offset, limit: 150,
       });
       setJob((current) => {
         if (!current || current.id !== job.id) return current;
-        const merged = [...(current.transcript ?? []), ...page.items];
-        const unique = new Map(merged.map((item) => [item.id, item]));
+        const combined = new Map([...(current.transcript ?? []), ...page.items]
+          .map((part) => [part.id, part] as const));
         return {
           ...current,
-          transcript: [...unique.values()].sort((a, b) => a.start - b.start),
+          transcript: [...combined.values()].sort((a, b) => a.start - b.start),
           transcript_count: page.total,
         };
       });
-      setVisibleCount(count + page.items.length);
+      setVisibleCount(offset + page.items.length);
     } catch (error) {
       toast.error(readError(error));
     } finally {
@@ -350,18 +313,12 @@ export const MeetingMode = () => {
   };
 
   const jumpToSource = async (id: string) => {
-    const index = job?.transcript?.findIndex((item) => item.id === id) ?? -1;
     setTranscriptOpen(true);
-    if (index >= 0) {
-      if (index >= visibleCount) setVisibleCount(index + 1);
-      window.setTimeout(
-        () =>
-          document.getElementById("meeting-" + id)?.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          }),
-        50,
-      );
+    const offset = job?.transcript?.findIndex((part) => part.id === id) ?? -1;
+    if (offset >= 0) {
+      setVisibleCount((current) => Math.max(current, offset + 1));
+      window.setTimeout(() => document.getElementById("meeting-" + id)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
       return;
     }
     if (!job) return;
@@ -369,375 +326,263 @@ export const MeetingMode = () => {
     if (!Number.isSafeInteger(ordinal) || ordinal <= 0) return;
     try {
       const page = await invoke<TranscriptPage>("get_meeting_transcript", {
-        serverUrl,
-        apiKey: authToken || null,
-        jobId: job.id,
-        offset: ordinal - 1,
-        limit: 1,
+        serverUrl, apiKey: authToken || null,
+        jobId: job.id, offset: ordinal - 1, limit: 1,
       });
-      const found = page.items.find((entry) => entry.id === id);
-      if (found) setSourcePreview(found);
+      setSourcePreview(page.items.find((part) => part.id === id) ?? null);
     } catch (error) {
       toast.error(readError(error));
     }
   };
 
-  const sources = (ids: string[]) => (
-    <span className="inline-flex flex-wrap gap-1 ps-2">
-      {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          className="text-xs text-logo-primary underline"
-          onClick={() => void jumpToSource(id)}
-        >
-          {id}
-        </button>
-      ))}
-    </span>
-  );
-
-  const evidence = (rows: Evidence[] | undefined, title: string) => (
-    <section className="w-full">
-      <h3 className="font-semibold mb-2">{title}</h3>
-      {rows?.length ? (
-        <ul className="flex flex-col gap-2">
-          {rows.map((entry, index) => (
-            <li
-              key={index}
-              className="rounded-lg border border-line p-3 text-sm"
-            >
-              <span>{entry.text}</span>
-              {entry.assignee && (
-                <span className="text-ink-3 ms-2">
-                  · {t("meeting.assignee")}:{" "}
-                  {speakerNames[entry.assignee] || entry.assignee}
-                </span>
-              )}
-              {entry.due_date && (
-                <span className="text-ink-3 ms-2">
-                  · {t("meeting.dueDate")}: {entry.due_date}
-                </span>
-              )}
-              {sources(entry.source_ids ?? [])}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-ink-3 text-sm">{t("meeting.none")}</p>
-      )}
-    </section>
-  );
-
-  return (
-    <div className="w-full max-w-3xl flex flex-col gap-5 pb-8">
-      <div className="w-full">
-        <h1 className="text-xl font-semibold flex gap-2 items-center">
-          <Mic size={22} />
-          {t("meeting.title")}
-        </h1>
-        <p className="text-sm text-ink-3 mt-2">{t("meeting.intro")}</p>
-      </div>
-
-      {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
-      <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-semibold">{t("meeting.recording")}</h2>
-          <span className="text-xs text-ink-3">
-            {currentId ? t("meeting.recordingNow") : t("meeting.stopped")}
-          </span>
-        </div>
-        <label className="text-sm flex gap-2 items-start">
-          <input
-            type="checkbox"
-            checked={consent}
-            disabled={Boolean(currentId)}
-            onChange={(event) => setConsent(event.target.checked)}
-          />
-          <span>{t("meeting.consent")}</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {!currentId ? (
-            <button
-              type="button"
-              disabled={!consent || busy}
-              onClick={() => void start()}
-              className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <Mic size={16} />
-              {t("meeting.start")}
-            </button>
-          ) : (
-            <RecordingPill
-              level={level}
-              disabled={busy}
-              onStop={() => void stop()}
-              label={t("meeting.recordingNow")}
-            />
-          )}
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
-          >
-            <RefreshCw size={16} />
-            {t("meeting.refresh")}
-          </button>
-        </div>
-        {autoProcessing && (
-          <p className="text-sm text-logo-primary" role="status">
-            {t("meeting.autoProcessing")}
-          </p>
-        )}
-        <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>
-      </div>
-
-      {!LOCAL_AI_TEST_MODE && (
-        <div className="w-full border border-line rounded-xl p-4 flex flex-col gap-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Server size={17} />
-            {t("meeting.server")}
-          </h2>
-          <label className="flex flex-col gap-1 text-sm">
-            {t("meeting.serverUrl")}
-            <input
-              className="rounded-lg border border-line bg-transparent px-3 py-2"
-              type="url"
-              value={serverUrl}
-              onChange={(event) => {
-                setServerUrl(event.target.value);
-                setApiKey("");
-              }}
-              onBlur={() => {
-                try {
-                  setServerUrl(saveServerUrl(serverUrl));
-                } catch (error) {
-                  toast.error(readError(error));
-                }
-              }}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            {t("meeting.apiKey")}
-            <input
-              className="rounded-lg border border-line bg-transparent px-3 py-2"
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              placeholder={localApiKey ? "Local API key detected" : undefined}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
-          </label>
-          <p className="text-xs text-ink-3">{t("meeting.uploadNotice")}</p>
-        </div>
-      )}
-
-      <section className="w-full flex flex-col gap-2">
-        <h2 className="font-semibold flex items-center gap-2">
-          <FileAudio size={17} />
-          {t("meeting.saved")}
-        </h2>
-        {meetings.length === 0 && (
-          <p className="text-ink-3 text-sm">{t("meeting.noRecordings")}</p>
-        )}
-        {meetings.map((meeting) => (
-          <div
-            key={meeting.id}
-            className="border border-line rounded-lg p-3 flex flex-wrap justify-between gap-3 items-center"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-medium">
-                {new Date(meeting.started_at).toLocaleString()}
+  const evidence = (rows: Evidence[] | undefined, label: string) => (
+    <details className="border-t border-line pt-3">
+      <summary className="cursor-pointer text-sm font-medium">
+        {label} · {rows?.length ?? 0}
+      </summary>
+      <div className="mt-3 flex flex-col gap-2">
+        {rows?.map((item, index) => (
+          <div key={index} className="rounded-lg bg-wash/20 px-3 py-2 text-sm">
+            <p>{item.text}</p>
+            {(item.assignee || item.due_date) && (
+              <p className="text-xs text-ink-3 mt-1">
+                {[item.assignee && (speakerNames[item.assignee] || item.assignee),
+                  item.due_date].filter(Boolean).join(" · ")}
               </p>
-              <p className="text-xs text-ink-3">
-                {meeting.status} · {(meeting.bytes / 1024 / 1024).toFixed(1)} MB
-              </p>
-              <p className="text-xs text-ink-3 break-all">
-                {meeting.audio_path}
-              </p>
-            </div>
-            {["incomplete", "interrupted"].includes(meeting.status) && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void recover(meeting)}
-                className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
-              >
-                {t("meeting.recover")}
-              </button>
             )}
-            <button
-              type="button"
-              disabled={busy || !authToken || meeting.status !== "ready"}
-              onClick={() => {
-                if (meeting.remote_job_id) {
-                  setJob(null);
-                  setVisibleCount(150);
-                  setTranscriptOpen(true);
-                  setSpeakerNames({});
-                  setServerUrl(meeting.remote_server_url || serverUrl);
-                  setJobId(meeting.remote_job_id);
-                } else {
-                  void upload(meeting);
-                }
-              }}
-              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              <UploadCloud size={16} />
-              {meeting.remote_job_id
-                ? t("meeting.resume")
-                : t("meeting.process")}
-            </button>
+            <div className="flex gap-2 flex-wrap mt-1">
+              {item.source_ids?.map((id) => (
+                <button key={id} type="button" onClick={() => void jumpToSource(id)}
+                  className="text-xs text-logo-primary underline">{id}</button>
+              ))}
+            </div>
           </div>
         ))}
-      </section>
+        {!rows?.length && <p className="text-sm text-ink-3">{t("meeting.none")}</p>}
+      </div>
+    </details>
+  );
 
-      {job && (
-        <div className="w-full flex flex-col gap-4 border border-line rounded-xl p-4">
-          <h2 className="font-semibold flex items-center gap-2">
-            <ClipboardList size={18} />
-            {t("meeting.results")}
-          </h2>
-          <p className="text-sm text-ink-3">
-            {t("meeting.status")}: {job.status} · {job.stage ?? "-"}
-            {job.duration && job.processed_seconds !== undefined
-              ? ` · ${Math.floor((job.processed_seconds / job.duration) * 100)}%`
-              : ""}
-          </p>
-          {Boolean(job.duration) && (
-            <progress
-              className="w-full h-2"
-              aria-label={t("meeting.status")}
-              max={job.duration}
-              value={job.processed_seconds ?? 0}
-            />
-          )}
-          {job.error && (
-            <p role="alert" className="text-red-500 text-sm">
-              {job.error}
-            </p>
-          )}
-          {job.status === "failed" && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void retry()}
-              className="border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              {t("meeting.retry")}
-            </button>
-          )}
-          {job.status === "completed" && job.insights && (
-            <button
-              type="button"
-              disabled={busy || !authToken}
-              onClick={() => void importAsNote()}
-              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              <BookOpenText size={16} /> {t("notes.importMeeting")}
-            </button>
-          )}
-          {job.status === "completed" && job.insights && (
-            <button
-              type="button"
-              disabled={busy || !authToken}
-              onClick={() => void importAsTasks()}
-              className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-            >
-              <ListTodo size={16} /> {t("tasks.importMeeting")}
-            </button>
-          )}
-          {job.insights && (
-            <>
-              <section>
-                <h3 className="font-semibold mb-2">{t("meeting.summary")}</h3>
-                <p className="text-sm whitespace-pre-wrap">
-                  {job.insights.summary}
-                </p>
-              </section>
-              {evidence(job.insights.decisions, t("meeting.decisions"))}
-              {evidence(job.insights.tasks, t("meeting.tasks"))}
-              {evidence(job.insights.open_questions, t("meeting.questions"))}
-            </>
-          )}
-          {sourcePreview && (
-            <div className="border border-line p-3 rounded-lg text-sm">
-              <span className="font-medium">
-                {speakerNames[sourcePreview.speaker] || sourcePreview.speaker}
-              </span>
-              <span className="ms-2 text-xs text-ink-3">
-                {formatTime(sourcePreview.start)} · {sourcePreview.id}
-              </span>
-              <p className="whitespace-pre-wrap mt-2">{sourcePreview.text}</p>
+  const displayTitle = job?.title || selected?.title || draftTitle ||
+    t("meeting.untitled", { defaultValue: "New meeting" });
+  const displayDate = job?.meeting_date || selected?.meeting_date ||
+    (selected?.started_at ? selected.started_at.slice(0, 10) : null);
+
+  return (
+    <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 pb-8">
+      <header>
+        <h1 className="text-xl font-semibold flex gap-2 items-center">
+          <Mic size={22} /> {t("meeting.title")}
+        </h1>
+        <p className="text-sm text-ink-3 mt-1">
+          {t("meeting.autoHint", { defaultValue: "Record once. Transcript, summary and tasks are organized automatically." })}
+        </p>
+      </header>
+      {LOCAL_AI_TEST_MODE && <LocalAiConnection apiKey={authToken} />}
+      {!LOCAL_AI_TEST_MODE && (
+        <details className="rounded-xl border border-line p-3 text-sm">
+          <summary className="cursor-pointer">{t("meeting.server")}</summary>
+          <div className="mt-3 flex flex-col gap-2">
+            <input type="url" aria-label={t("meeting.serverUrl")} value={serverUrl}
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              onChange={(event) => { setServerUrl(event.target.value); setApiKey(""); }}
+              onBlur={() => {
+                try { setServerUrl(saveServerUrl(serverUrl)); }
+                catch (error) { toast.error(readError(error)); }
+              }} />
+            <input type="password" autoComplete="off" value={apiKey}
+              aria-label={t("meeting.apiKey")}
+              placeholder={localApiKey ? "Local API key detected" : t("meeting.apiKey")}
+              className="border border-line bg-transparent rounded-lg px-3 py-2"
+              onChange={(event) => setApiKey(event.target.value)} />
+          </div>
+        </details>
+      )}
+
+      {!expanded ? (
+        <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium">{t("meeting.saved")}</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void refresh()}
+                aria-label={t("meeting.refresh")} className="border border-line rounded-lg p-2">
+                <RefreshCw size={16} />
+              </button>
+              <button type="button" disabled={Boolean(currentId)} onClick={newMeeting}
+                className="bg-logo-primary text-white rounded-lg px-3 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50">
+                <Plus size={16} /> {t("meeting.new", { defaultValue: "New meeting" })}
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            {meetings.map((meeting) => (
+              <button key={meeting.id} type="button" onClick={() => openMeeting(meeting)}
+                className="rounded-lg text-start px-3 py-3 flex items-center justify-between gap-3 hover:bg-wash/30">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium truncate">
+                    {meeting.title || t("meeting.untitled", { defaultValue: "Meeting" })}
+                  </span>
+                  <span className="block text-xs text-ink-3 mt-1">
+                    {meeting.meeting_date || new Date(meeting.started_at).toLocaleDateString()}
+                    {" · "}{meeting.status}
+                  </span>
+                </span>
+                <ChevronRight size={17} className="text-ink-3 shrink-0" />
+              </button>
+            ))}
+            {!meetings.length && (
+              <p className="py-8 text-center text-sm text-ink-3">{t("meeting.noRecordings")}</p>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-line p-4 flex flex-col gap-4">
+          <button type="button" disabled={recording || busy || uploading}
+            onClick={() => { setExpanded(false); resetResult(); }}
+            className="inline-flex w-fit items-center gap-2 text-sm text-ink-2 disabled:opacity-50">
+            <ArrowLeft size={16} /> {t("onboarding.shell.back")}
+          </button>
+          {!selected ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-sm flex flex-col gap-1">
+                {t("meeting.meetingName", { defaultValue: "Meeting title (optional)" })}
+                <input value={draftTitle} maxLength={180}
+                  placeholder={t("meeting.autoName", { defaultValue: "AI will suggest a title" })}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  className="border border-line bg-transparent rounded-lg px-3 py-2" />
+              </label>
+              <label className="text-sm flex flex-col gap-1">
+                <span className="flex items-center gap-1"><CalendarDays size={15} />
+                  {t("meeting.meetingDate", { defaultValue: "Date (optional)" })}
+                </span>
+                <input type="date" value={draftDate}
+                  onChange={(event) => setDraftDate(event.target.value)}
+                  className="border border-line bg-transparent rounded-lg px-3 py-2" />
+              </label>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-lg font-semibold">{displayTitle}</h2>
+              <p className="text-xs text-ink-3 mt-1">{displayDate} · {selected.status}</p>
             </div>
           )}
-          {speakers.length > 0 && (
-            <section className="w-full flex flex-col gap-2">
-              <h3 className="font-semibold">{t("meeting.speakerNames")}</h3>
-              {speakers.map((speaker) => (
-                <label
-                  key={speaker}
-                  className="flex items-center gap-3 text-sm"
-                >
-                  <span className="min-w-28">{speaker}</span>
-                  <input
-                    className="flex-1 rounded-lg border border-line bg-transparent px-3 py-2"
-                    placeholder={t("meeting.speakerPlaceholder")}
-                    value={speakerNames[speaker] ?? ""}
-                    onChange={(event) =>
-                      setSpeakerNames((current) => ({
-                        ...current,
-                        [speaker]: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-            </section>
+          {(!selected || recording) && (
+            <label className="text-sm flex gap-2 items-start">
+              <input type="checkbox" checked={consent} disabled={recording}
+                onChange={(event) => setConsent(event.target.checked)} />
+              <span>{t("meeting.consent")}</span>
+            </label>
           )}
-          {job.transcript && (
-            <details
-              className="w-full"
-              open={transcriptOpen || Boolean(job.error)}
-              onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}
-            >
-              <summary className="cursor-pointer font-semibold">
-                {t("meeting.transcript")}
-              </summary>
+          <div className="rounded-xl bg-wash/20 border border-line p-3 flex flex-col items-start gap-3">
+            {recording ? (
+              <RecordingPill level={level} disabled={busy} onStop={() => void stop()}
+                label={t("meeting.recordingNow")} />
+            ) : !selected ? (
+              <button type="button" disabled={!consent || busy} onClick={() => void start()}
+                className="rounded-full bg-logo-primary text-white px-4 py-2 text-sm inline-flex gap-2 items-center disabled:opacity-50">
+                <Mic size={16} /> {t("meeting.start")}
+              </button>
+            ) : (
+              <p className="text-xs text-ink-3">
+                {uploading ? t("meeting.autoProcessing") :
+                  t("meeting.storageNotice")}
+              </p>
+            )}
+            {recording && <p className="text-xs text-ink-3">{t("meeting.storageNotice")}</p>}
+          </div>
+
+          {selected && ["incomplete", "interrupted"].includes(selected.status) && (
+            <button type="button" disabled={busy} onClick={() => void recover()}
+              className="w-fit rounded-lg border border-line px-3 py-2 text-sm">
+              {t("meeting.recover")}
+            </button>
+          )}
+          {selected?.status === "ready" && !selected.remote_job_id && !uploading && (
+            <button type="button" disabled={busy || !authToken}
+              onClick={() => void upload(selected)}
+              className="w-fit rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
+              {t("meeting.retrySync", { defaultValue: "Resume automatic sync" })}
+            </button>
+          )}
+          {(uploading || (job && job.status !== "completed")) && (
+            <div role="status" className="flex flex-col gap-2">
+              <p className="text-sm text-ink-3">
+                {uploading ? t("meeting.autoProcessing") :
+                  `${t("meeting.status")}: ${job?.stage || job?.status}`}
+              </p>
+              {job?.duration && (
+                <progress className="w-full h-2" max={job.duration}
+                  value={job.processed_seconds ?? 0} />
+              )}
+              {job?.error && <p className="text-red-500 text-sm">{job.error}</p>}
+              {job?.status === "failed" && (
+                <button type="button" disabled={busy} onClick={() => void retry()}
+                  className="rounded-lg border border-line px-3 py-2 text-sm w-fit">
+                  {t("meeting.retry")}
+                </button>
+              )}
+            </div>
+          )}
+          {job?.insights && (
+            <div className="flex flex-col gap-4">
+              <section>
+                <h3 className="text-sm font-semibold mb-2">{t("meeting.summary")}</h3>
+                <p className="text-sm whitespace-pre-wrap">{job.insights.summary}</p>
+              </section>
+              {evidence(job.insights.tasks, t("meeting.tasks"))}
+              {evidence(job.insights.decisions, t("meeting.decisions"))}
+              {evidence(job.insights.open_questions, t("meeting.questions"))}
+              <p className="text-xs text-ink-3">
+                {t("meeting.tasksSaved", { defaultValue: "Action items are saved automatically in Tasks. Review suggested owners and deadlines." })}
+              </p>
+            </div>
+          )}
+          {job && (job.transcript_count || job.transcript?.length) ? (
+            <details open={transcriptOpen} onToggle={(event) => setTranscriptOpen(event.currentTarget.open)}
+              className="border-t border-line pt-3">
+              <summary className="cursor-pointer text-sm font-medium">{t("meeting.transcript")}</summary>
+              {speakers.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {speakers.map((speaker) => (
+                    <label key={speaker} className="text-xs flex items-center gap-2">
+                      {speaker}
+                      <input className="rounded-lg border border-line bg-transparent px-2 py-1"
+                        aria-label={speaker}
+                        placeholder={t("meeting.speakerPlaceholder")}
+                        value={speakerNames[speaker] || ""}
+                        onChange={(event) => setSpeakerNames((current) => ({
+                          ...current, [speaker]: event.target.value,
+                        }))} />
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className="max-h-96 overflow-y-auto mt-3 flex flex-col gap-2">
-                {job.transcript.slice(0, visibleCount).map((item) => (
-                  <p
-                    key={item.id}
-                    id={"meeting-" + item.id}
-                    className="text-sm border-b border-line pb-2"
-                  >
-                    <span className="font-medium">
-                      {speakerNames[item.speaker] || item.speaker}
-                    </span>
-                    <span className="text-xs text-ink-3 ms-2">
-                      {formatTime(item.start)} · {item.id}
-                    </span>
-                    <span className="block whitespace-pre-wrap mt-1">
-                      {item.text}
-                    </span>
-                  </p>
+                {job.transcript?.slice(0, visibleCount).map((part) => (
+                  <div key={part.id} id={"meeting-" + part.id}
+                    className="border-b border-line pb-2">
+                    <p className="text-xs text-ink-3">
+                      {speakerNames[part.speaker] || part.speaker}
+                      {" · "}{clock(part.start)} · {part.id}
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap mt-1">{part.text}</p>
+                  </div>
                 ))}
+                {sourcePreview && (
+                  <div className="rounded-lg bg-wash/20 p-3 text-sm">
+                    {sourcePreview.id} · {sourcePreview.text}
+                  </div>
+                )}
               </div>
-              {(job.transcript_count ?? job.transcript.length) >
-                visibleCount && (
-                <button
-                  type="button"
-                  className="mt-3 px-3 py-2 rounded-lg border border-line text-sm"
-                  disabled={loadingMore}
-                  onClick={() => void loadMore()}
-                >
+              {(job.transcript_count ?? job.transcript?.length ?? 0) > visibleCount && (
+                <button type="button" disabled={loadingMore} onClick={() => void loadMore()}
+                  className="mt-3 rounded-lg border border-line px-3 py-2 text-sm">
                   {t("meeting.showMore")}
                 </button>
               )}
             </details>
-          )}
-          <p className="text-xs text-ink-3">{t("meeting.review")}</p>
-        </div>
+          ) : null}
+        </section>
       )}
     </div>
   );
