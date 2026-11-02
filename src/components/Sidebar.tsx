@@ -11,6 +11,7 @@ import {
   RadioTower,
   BookOpenText,
   BookOpenCheck,
+  ListTodo,
 } from "lucide-react";
 import HandyTextLogo from "./icons/HandyTextLogo";
 import HandyHand from "./icons/HandyHand";
@@ -18,6 +19,7 @@ import { MeetingMode } from "./meeting/MeetingMode";
 import { LiveMode } from "./live/LiveMode";
 import { NotesMode } from "./notes/NotesMode";
 import { MemoryMode } from "./memory/MemoryMode";
+import { TasksMode } from "./tasks/TasksMode";
 import { useSettings } from "../hooks/useSettings";
 import {
   GeneralSettings,
@@ -69,6 +71,12 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.memory",
     icon: BookOpenCheck,
     component: MemoryMode,
+    enabled: () => true,
+  },
+  tasks: {
+    labelKey: "sidebar.tasks",
+    icon: ListTodo,
+    component: TasksMode,
     enabled: () => true,
   },
   meeting: {
