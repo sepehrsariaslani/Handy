@@ -169,6 +169,8 @@ export interface AiTask {
   due_date: string | null;
   status: AiTaskStatus;
   source_meeting_id: string | null;
+  source_meeting_title?: string | null;
+  source_meeting_date?: string | null;
   source_index: number | null;
   source_ids: string[];
   source_quotes: { id: string; text: string }[];
