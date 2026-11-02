@@ -106,7 +106,7 @@ class MeetingProcessor:
             finally:
                 window.unlink(missing_ok=True)
             LOG.info(
-                "meeting.asr.done job=%s segments=%d detected_language=%s elapsed_ms=%d",
+                "meeting.asr.done job=%s segments=%d model_reported_language=%s elapsed_ms=%d",
                 job_id, len(segments), language or "unknown",
                 int((monotonic() - window_started) * 1000),
             )
