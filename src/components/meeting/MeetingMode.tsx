@@ -198,7 +198,9 @@ export const MeetingMode = () => {
       // A failed upload never deletes the safely saved local recording;
       // the Process button remains available for retry.
       if (!authToken) {
-        toast.error("Local AI is not connected. Recording was saved for retry.");
+        toast.error(
+          "Local AI is not connected. Recording was saved for retry.",
+        );
         return;
       }
       setAutoProcessing(true);
