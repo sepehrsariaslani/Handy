@@ -10,6 +10,7 @@ use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::{Transcription, TranscriptionManager};
 use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
 use crate::shortcut;
+use crate::remote_dictation::{self, DictationRoute};
 use crate::tray::{set_tray_state, TrayIconState};
 use crate::utils::{
     self, show_processing_overlay, show_recording_overlay, show_transcribing_overlay,
@@ -450,9 +451,13 @@ impl ShortcutAction for TranscribeAction {
         let tm = app.state::<Arc<TranscriptionManager>>();
         let rm = app.state::<Arc<AudioRecordingManager>>();
 
-        // Load ASR model and VAD model in parallel
+        // Remote-only mode needs no local model. Auto-fallback prepares the
+        // local engine so a failed server request can still paste the text.
+        let route = remote_dictation::current_config(app).route;
         let kickoff_started = Instant::now();
-        tm.initiate_model_load();
+        if route != DictationRoute::ServerOnly {
+            tm.initiate_model_load();
+        }
         let rm_clone = Arc::clone(&rm);
         std::thread::spawn(move || {
             if let Err(e) = rm_clone.preload_vad() {
@@ -463,7 +468,7 @@ impl ShortcutAction for TranscribeAction {
 
         // Don't open the mic if nothing can transcribe the recording; the load
         // kicked off above fails and reports why.
-        if !tm.is_model_loaded() {
+        if route != DictationRoute::ServerOnly && !tm.is_model_loaded() {
             let selected_model = get_settings(app).selected_model;
             if let Err(e) = app
                 .state::<Arc<ModelManager>>()
@@ -492,10 +497,11 @@ impl ShortcutAction for TranscribeAction {
         // Use the app-facing model capability as the single pre-recording source
         // for live streaming decisions. Unknown support is represented as false
         // until the model registry is updated by discovery or runtime load.
-        let model_supports_streaming = selected_model_info
-            .as_ref()
-            .map(|m| m.supports_streaming)
-            .unwrap_or(false);
+        let model_supports_streaming = route != DictationRoute::ServerOnly
+            && selected_model_info
+                .as_ref()
+                .map(|m| m.supports_streaming)
+                .unwrap_or(false);
         let vad_policy = if !settings.vad_enabled {
             VadPolicy::Disabled
         } else if model_supports_streaming {
@@ -711,7 +717,28 @@ impl ShortcutAction for TranscribeAction {
                     // otherwise a batch run of the samples. A cancel is surfaced
                     // as an error, so it never starts a batch run.
                     let transcription_time = Instant::now();
-                    let transcription_result = tm.transcribe_recording(samples);
+                    let route = remote_dictation::current_config(&ah).route;
+                    let transcription_result = match route {
+                        DictationRoute::Local => tm.transcribe_recording(samples),
+                        DictationRoute::ServerOnly => {
+                            tm.cancel_stream();
+                            remote_dictation::transcribe(&ah, &samples)
+                                .await
+                                .map_err(|error| anyhow::anyhow!(error))
+                        }
+                        DictationRoute::ServerWithFallback => {
+                            match remote_dictation::transcribe(&ah, &samples).await {
+                                Ok(result) => {
+                                    tm.cancel_stream();
+                                    Ok(result)
+                                }
+                                Err(error) => {
+                                    warn!("Remote transcription unavailable: {error}. Trying the offline model.");
+                                    tm.transcribe_recording(samples)
+                                }
+                            }
+                        }
+                    };
 
                     // Await WAV save and verify
                     let wav_saved = match wav_handle.await {

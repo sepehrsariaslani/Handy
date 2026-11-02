@@ -14,6 +14,7 @@ mod helpers;
 mod input;
 mod language_detection;
 mod llm_client;
+mod remote_dictation;
 mod managers;
 mod memory;
 mod overlay;
@@ -772,6 +773,8 @@ pub fn run(cli_args: CliArgs) {
             commands::audio::is_recording,
             commands::audio::get_microphone_channels,
             commands::audio::set_selected_channel,
+            remote_dictation::get_remote_dictation_status,
+            remote_dictation::set_remote_dictation_config,
             commands::transcription::set_model_unload_timeout,
             commands::transcription::get_model_load_status,
             commands::transcription::get_language_status,
