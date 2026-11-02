@@ -30,6 +30,7 @@ from .store import SessionStore
 from .meeting_store import MeetingStore
 from .notes_api import attach_notes_routes
 from .memory_api import attach_memory_routes
+from .task_api import attach_task_routes
 from .meeting_api import attach_meeting_routes
 from .upload_api import attach_upload_routes
 from .meeting_processing import MeetingProcessor
@@ -72,7 +73,7 @@ def create_app(
 
     app = FastAPI(
         title="Handy AI API",
-        version="0.7.0",
+        version="0.8.0",
         description="Whisper + Qwen, streaming and durable meeting analysis",
         lifespan=lifespan,
     )
@@ -214,6 +215,7 @@ def create_app(
     attach_upload_routes(app, config, meeting_store, require_auth)
     attach_notes_routes(app, config, meeting_store, models, require_auth)
     attach_memory_routes(app, config, models, require_auth)
+    attach_task_routes(app, config, meeting_store, require_auth)
     return app
 
 

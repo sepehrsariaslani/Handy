@@ -36,7 +36,8 @@ class MemoryAnswerer:
         self.config = config
         self.llm = llm
 
-    async def answer(self, question: str, sources: list[dict]) -> tuple[str | None, list[str]]:
+    async def answer(self, question: str, sources: list[dict],
+                     history: list[dict] | None = None) -> tuple[str | None, list[str]]:
         if not sources:
             return None, []
         if not await self.llm.ready():
@@ -54,6 +55,11 @@ class MemoryAnswerer:
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": json.dumps({
                     "question": question, "evidence": evidence,
+                    "previous_turns": [
+                        {"question": turn["question"][:350],
+                         "answer": (turn.get("answer") or "")[:500]}
+                        for turn in (history or [])[-3:]
+                    ],
                 }, ensure_ascii=False)},
             ],
             "temperature": 0,
