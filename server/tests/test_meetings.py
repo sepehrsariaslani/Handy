@@ -415,7 +415,7 @@ def test_meeting_exact_last_second_is_transcribed(tmp_path):
         writer.setnchannels(1)
         writer.setsampwidth(2)
         writer.setframerate(RATE)
-        writer.writeframes(b"\\x00\\x00" * (frames - 10) + b"\\xff\\x7f" * 10)
+        writer.writeframes(b"\x00\x00" * (frames - 10) + b"\xff\x7f" * 10)
     first, count1 = wav_window(source, 0, RATE * WINDOW_SECONDS)
     final, count2 = wav_window(source, count1, frames - count1)
     try:
@@ -424,7 +424,7 @@ def test_meeting_exact_last_second_is_transcribed(tmp_path):
         with wave.open(str(final), "rb") as last:
             assert last.getnframes() == count2
             last.setpos(count2 - 10)
-            assert last.readframes(10) == b"\\xff\\x7f" * 10
+            assert last.readframes(10) == b"\xff\x7f" * 10
     finally:
         first.unlink(missing_ok=True)
         final.unlink(missing_ok=True)
