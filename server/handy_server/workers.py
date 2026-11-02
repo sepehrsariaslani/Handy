@@ -1,6 +1,11 @@
 """Inference adapters. Optional GPU dependencies load only when explicitly enabled."""
 import asyncio
+import json
+import os
 from pathlib import Path
+import subprocess
+import tempfile
+import wave
 import logging
 import threading
 from urllib.parse import urlsplit
@@ -79,6 +84,126 @@ class WhisperWorker:
                 return entries, getattr(info, "language", None)
         except Exception as exc:
             raise WorkerFailure(f"Whisper inference failed ({type(exc).__name__})") from None
+
+
+class GgufWhisperWorker:
+    """Opt-in local GGUF Whisper adapter using transcribe.cpp's transcribe-cli.
+
+    This reuses the same GGUF as the Handy desktop, without converting or
+    downloading a CTranslate2 model. Only a local executable is launched;
+    caller-supplied audio is passed as a filename, never through a shell.
+    """
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self._ready = False
+        self._load_error: str | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    def initialize(self) -> None:
+        if not self.settings.asr_enabled:
+            return
+        model = self.settings.gguf_model_path
+        binary = self.settings.transcribe_cli_path
+        if (model is None or binary is None or not model.is_file() or
+                not binary.is_file() or not os.access(binary, os.X_OK)):
+            self._load_error = "MissingModelOrExecutable"
+            logger.warning("GGUF Whisper model or executable is missing")
+            return
+        # Verify the model actually loads and transcribes a small local WAV
+        # before advertising ASR readiness; no HF request is made.
+        try:
+            with tempfile.TemporaryDirectory(prefix="handy-gguf-probe-") as temp:
+                silence = Path(temp) / "probe.wav"
+                with wave.open(str(silence), "wb") as writer:
+                    writer.setnchannels(1)
+                    writer.setsampwidth(2)
+                    writer.setframerate(16000)
+                    writer.writeframes(b"\0" * 16000)  # 0.5 s silence
+                self._run_cli(silence, None, timeout=180)
+            self._ready = True
+        except (WorkerFailure, OSError, ValueError) as exc:
+            self._load_error = type(exc).__name__
+            logger.warning("GGUF Whisper initialization failed (%s)", self._load_error)
+            self._ready = False
+
+    def _run_cli(self, audio_path: Path, language: str | None,
+                 timeout: int = 300) -> tuple[list[TranscriptSegment], str | None]:
+        with tempfile.TemporaryDirectory(prefix="handy-gguf-batch-") as temp:
+            inputs = Path(temp) / "audio.list"
+            inputs.write_text(str(audio_path.resolve()) + "\n", encoding="utf-8")
+            command = [
+                str(self.settings.transcribe_cli_path), "-q",
+                "-m", str(self.settings.gguf_model_path),
+                "--backend", self.settings.gguf_compute_backend,
+                "--timestamps", "segment",
+                "--batch", str(inputs), "--batch-jsonl",
+            ]
+            if language:
+                command.extend(["--language", language])
+            try:
+                proc = subprocess.run(
+                    command, capture_output=True, text=True, check=False,
+                    timeout=timeout, stdin=subprocess.DEVNULL,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.warning("GGUF CLI execution failed (%s)", type(exc).__name__)
+                raise WorkerFailure("GGUF Whisper execution failed") from None
+            if proc.returncode != 0:
+                logger.warning("GGUF CLI exited with status %s", proc.returncode)
+                raise WorkerFailure("GGUF Whisper inference failed")
+            try:
+                records = [json.loads(line) for line in proc.stdout.splitlines()
+                           if line.strip()]
+                results = [row for row in records if row.get("file") is not None]
+                if len(results) != 1 or results[0].get("error"):
+                    raise ValueError("Unexpected transcribe-cli result")
+                result = results[0]
+                text = result["text"]
+                if not isinstance(text, str):
+                    raise ValueError("Invalid transcript")
+                rows = result.get("segments", [])
+                if not isinstance(rows, list):
+                    raise ValueError("Invalid timestamps")
+                segments = [
+                    TranscriptSegment(
+                        id=f"s{index:06d}",
+                        start=max(0.0, float(row["t0_ms"]) / 1000),
+                        end=max(0.0, float(row["t1_ms"]) / 1000),
+                        speaker=None,
+                        raw_text=row["text"].strip(),
+                        clean_text=None,
+                        final=True,
+                    )
+                    for index, row in enumerate(rows, 1)
+                    if isinstance(row.get("text"), str) and row["text"].strip()
+                ]
+                # If timestamps are not returned, retain the text rather than
+                # silently losing the recording from the meeting pipeline.
+                if not segments and text.strip():
+                    with wave.open(str(audio_path), "rb") as reader:
+                        duration = reader.getnframes() / reader.getframerate()
+                    segments = [TranscriptSegment(
+                        id="s000001", start=0, end=duration, speaker=None,
+                        raw_text=text.strip(), clean_text=None, final=True,
+                    )]
+                return segments, language
+            except (ValueError, TypeError, KeyError, AttributeError, wave.Error,
+                    json.JSONDecodeError):
+                logger.warning("GGUF CLI returned an invalid result")
+                raise WorkerFailure("Invalid GGUF Whisper result") from None
+
+    def transcribe_file(self, path: Path, language: str | None = None) -> tuple[list[TranscriptSegment], str | None]:
+        if not self._ready:
+            raise WorkerUnavailable("GGUF Whisper is not ready")
+        # Each CLI call loads the memory-mapped model, so long meetings will
+        # be slower than a persistent in-process backend on a small Mac.
+        with self._lock:
+            return self._run_cli(path, language)
 
 
 class QwenWorker:
@@ -179,7 +304,7 @@ class QwenWorker:
 class InferenceRuntime:
     def __init__(self, settings: Settings, asr: WhisperWorker | None = None, llm: QwenWorker | None = None):
         self.settings = settings
-        self.asr = asr or WhisperWorker(settings)
+        self.asr = asr or (GgufWhisperWorker(settings) if settings.asr_backend == "gguf_cli" else WhisperWorker(settings))
         self.llm = llm or QwenWorker(settings)
         self._asr_queue = asyncio.Semaphore(1)
         self._llm_queue = asyncio.Semaphore(2)
