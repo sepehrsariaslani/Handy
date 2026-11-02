@@ -1,0 +1,21 @@
+name: Temporary format preview
+on:
+  push:
+    paths:
+      - .github/workflows/temporary-format-preview.yml
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Format and emit source for review
+        run: |
+          bunx prettier --write src/components/meeting/MeetingMode.tsx
+          echo 'BEGIN_FORMATTED_BASE64'
+          base64 -w 0 src/components/meeting/MeetingMode.tsx
+          echo
+          echo 'END_FORMATTED_BASE64'
