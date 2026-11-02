@@ -149,7 +149,7 @@ def test_backfill_update_and_delete_reflected_in_index(seed):
     assert any(x["kind"] == "note" for x in store.search("فاکتور"))
     # Existing meeting changes are visible through the FTS update trigger.
     meetings = MeetingStore(db_path)
-    meetings.update_speakers(meeting["id"], [("سارا", "u00000001")])
+    meetings.update_speakers(meeting["id"], [("u00000001", "سارا")])
     assert any(x["speaker"] == "سارا" for x in store.search("علی"))
     notes.delete(note["id"])
     assert not any(x["kind"] == "note" for x in store.search("فاکتور"))
