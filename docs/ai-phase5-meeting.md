@@ -35,8 +35,8 @@ speaker diarization, cited summaries, decisions and action items.
    an optional meeting date (otherwise recording date), while preserving
    explicit user input.
 10. Handy polls job status, displays the current stage and processed time, and
-   fetches long transcripts in pages (150 utterances). Clicking evidence
-   sources retrieves their original utterance without fetching the whole file.
+    fetches long transcripts in pages (150 utterances). Clicking evidence
+    sources retrieves their original utterance without fetching the whole file.
 
 ## GPU installation
 
