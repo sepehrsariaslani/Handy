@@ -368,6 +368,44 @@ pub fn list_meetings(
     Ok(meetings)
 }
 
+/// Return the existing local development API token only for the exact loopback
+/// Handy endpoint. Never expose the token for a user-supplied remote URL.
+#[tauri::command]
+#[specta::specta]
+pub fn get_local_ai_api_key(server_url: String) -> Option<String> {
+    let url = reqwest::Url::parse(&server_url).ok()?;
+    let loopback = matches!(
+        url.host_str(),
+        Some("localhost" | "127.0.0.1" | "::1")
+    );
+    if url.scheme() != "http"
+        || !loopback
+        || url.port_or_known_default() != Some(8765)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return None;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME")?;
+        let path = PathBuf::from(home)
+            .join(".config")
+            .join("handy")
+            .join("local-api-key");
+        let token = fs::read_to_string(path).ok()?;
+        let trimmed = token.trim();
+        if trimmed.len() >= 24 {
+            return Some(trimmed.to_owned());
+        }
+    }
+    None
+}
+
 fn server_endpoint(server_url: &str, suffix: &str) -> Result<reqwest::Url, String> {
     let base = reqwest::Url::parse(server_url).map_err(|e| e.to_string())?;
     let local = matches!(base.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
