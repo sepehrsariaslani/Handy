@@ -1,0 +1,5 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Handy Dev",
+  "identifier": "com.pais.handy.dev"
+}
