@@ -785,6 +785,7 @@ pub fn run(cli_args: CliArgs) {
             commands::meeting::recover_meeting,
             commands::meeting::submit_meeting,
             commands::meeting::get_meeting_job,
+            commands::meeting::get_meeting_transcript,
             commands::meeting::retry_meeting_job,
             commands::history::get_history_entries,
             commands::history::toggle_history_entry_saved,

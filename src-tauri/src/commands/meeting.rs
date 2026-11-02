@@ -55,6 +55,19 @@ pub struct MeetingJob {
     pub error: Option<String>,
     pub transcript: Option<Vec<MeetingUtterance>>,
     pub insights: Option<MeetingInsights>,
+    #[serde(default)]
+    pub duration: Option<f64>,
+    #[serde(default)]
+    pub processed_seconds: Option<f64>,
+    #[serde(default)]
+    pub transcript_count: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct MeetingTranscriptPage {
+    pub items: Vec<MeetingUtterance>,
+    pub offset: usize,
+    pub total: usize,
 }
 
 struct ActiveMeeting {
@@ -351,12 +364,16 @@ fn server_endpoint(server_url: &str, suffix: &str) -> Result<reqwest::Url, Strin
     if !base.username().is_empty() || base.password().is_some() {
         return Err("Credentials must not be embedded in the server URL".into());
     }
+    if base.query().is_some() || base.fragment().is_some() || base.path() != "/" {
+        return Err("Meeting server URL must not contain a path, query or fragment".into());
+    }
     base.join(suffix).map_err(|e| e.to_string())
 }
 
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60 * 60))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())
 }
@@ -382,7 +399,8 @@ pub async fn submit_meeting(
     let form = reqwest::multipart::Form::new()
         .file("audio", &audio)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .text("meeting_id", id.clone());
     let url = server_endpoint(&server_url, "v1/meetings")?;
     let mut request = client()?.post(url).multipart(form);
     if let Some(key) = api_key.filter(|s| !s.is_empty()) {
@@ -442,6 +460,41 @@ pub async fn retry_meeting_job(
     }
     let url = server_endpoint(&server_url, &format!("v1/meetings/{job_id}/retry"))?;
     let mut request = client()?.post(url);
+    if let Some(key) = api_key.filter(|s| !s.is_empty()) {
+        request = request.bearer_auth(key);
+    }
+    request
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_meeting_transcript(
+    server_url: String,
+    api_key: Option<String>,
+    job_id: String,
+    offset: usize,
+    limit: usize,
+) -> Result<MeetingTranscriptPage, String> {
+    if job_id.len() != 32 || !job_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Invalid job ID".into());
+    }
+    if limit == 0 || limit > 500 {
+        return Err("Invalid page size".into());
+    }
+    let mut url = server_endpoint(&server_url, &format!("v1/meetings/{job_id}/transcript"))?;
+    url.query_pairs_mut()
+        .append_pair("offset", &offset.to_string())
+        .append_pair("limit", &limit.to_string());
+    let mut request = client()?.get(url);
     if let Some(key) = api_key.filter(|s| !s.is_empty()) {
         request = request.bearer_auth(key);
     }
