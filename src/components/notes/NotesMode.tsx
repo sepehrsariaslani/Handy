@@ -12,7 +12,11 @@ import {
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type { AiNote, AiNoteSummary, AiNotesPage } from "@/lib/ai/contracts";
-import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import {
+  LOCAL_AI_TEST_MODE,
+  loadServerUrl,
+  saveServerUrl,
+} from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const message = (error: unknown) =>
@@ -169,6 +173,7 @@ export function NotesMode() {
         <p className="text-sm text-ink-3 mt-1">{t("notes.intro")}</p>
       </header>
 
+      {!LOCAL_AI_TEST_MODE && (
       <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           {t("notes.serverUrl")}
@@ -202,6 +207,7 @@ export function NotesMode() {
         </label>
         <p className="text-xs text-ink-3">{t("notes.privacy")}</p>
       </section>
+      )}
 
       <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
         <label className="flex-1 min-w-40 flex flex-col gap-1 text-sm">
