@@ -71,9 +71,9 @@ def test_missing_session_and_inference_not_implemented(client: TestClient, auth:
     assert client.get("/v1/sessions/missing", headers=auth).status_code == 404
     session = client.post("/v1/sessions", headers=auth, json={"mode": "meeting"}).json()
     assert client.post(f"/v1/sessions/{session['id']}/chunks", headers=auth).status_code == 501
-    assert client.post("/v1/meetings", headers=auth).status_code == 501
-    assert client.get("/v1/meetings/f" + "0" * 31, headers=auth).status_code == 501
-    assert client.post("/v1/meetings/f" + "0" * 31 + "/retry", headers=auth).status_code == 501
+    assert client.post("/v1/meetings", headers=auth).status_code == 422
+    assert client.get("/v1/meetings/f" + "0" * 31, headers=auth).status_code == 404
+    assert client.post("/v1/meetings/f" + "0" * 31 + "/retry", headers=auth).status_code == 404
 
 
 def test_cors_is_restricted(client: TestClient):
