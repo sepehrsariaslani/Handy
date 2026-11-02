@@ -9,11 +9,10 @@ incremental streaming is built in phase 3. Full meeting analysis and notes are
 not part of phase 2. Both workers are **disabled by default** and readiness
 reflects actual model availability, not a fake success.
 
-
 ## Switch the desktop-selected GGUF model in Meeting and Notes (macOS development)
 
 When launching with `bun run dev:mac`, the app and local API share
-`server/data/asr-models`. For each *new* Meeting or Note, the recorder
+`server/data/asr-models`. For each _new_ Meeting or Note, the recorder
 pins Handy's selected and fully downloaded model ID and registers a symlink
 to the existing GGUF file. No additional model download or copy is required.
 The resumable upload pins that ID and the server runs the same selected
