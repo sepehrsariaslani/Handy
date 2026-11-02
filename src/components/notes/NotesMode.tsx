@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpenText,
@@ -8,6 +8,7 @@ import {
   Trash2,
   Sparkles,
   Link2,
+  Mic,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
@@ -19,6 +20,8 @@ import {
 } from "@/lib/ai/serverConfig";
 import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 import { LocalAiConnection } from "@/components/shared/LocalAiConnection";
+import { RecordingPill } from "@/components/ui/RecordingPill";
+import { LiveStreamSession } from "@/lib/ai/liveSession";
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -40,6 +43,16 @@ export function NotesMode() {
   const [meetingId, setMeetingId] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [liveLevel, setLiveLevel] = useState(0);
+  const [livePartial, setLivePartial] = useState("");
+  const [liveStatus, setLiveStatus] = useState<
+    "idle" | "recording" | "draining" | "saving" | "completed" | "failed"
+  >("idle");
+  const liveSession = useRef<LiveStreamSession | null>(null);
+  const liveParts = useRef(new Map<number, string>());
+  const liveSaved = useRef(false);
+  const liveBusy = recording || liveStatus === "draining" || liveStatus === "saving";
 
   const client = useMemo(
     () => (authToken ? new HandyAiClient(serverUrl, authToken) : null),
@@ -69,8 +82,12 @@ export function NotesMode() {
     return () => window.clearTimeout(timer);
   }, [loadList]);
 
+  useEffect(() => {
+    return () => liveSession.current?.dispose();
+  }, []);
+
   const select = async (id: string) => {
-    if (!client || busy) return;
+    if (!client || busy || liveBusy) return;
     setBusy(true);
     try {
       const record = await client.getNote(id);
@@ -85,13 +102,138 @@ export function NotesMode() {
   };
 
   const newNote = () => {
+    if (liveBusy) return;
     setNote(null);
     setTitle("");
     setContent("");
+    setLivePartial("");
+    setLiveStatus("idle");
+  };
+
+  const startLiveNote = async () => {
+    if (!client || busy || liveBusy) return;
+    const originalContent = content;
+    const originalNote = note;
+    const originalTitle = title;
+    liveParts.current = new Map();
+    liveSaved.current = false;
+    setLivePartial("");
+    setLiveLevel(0);
+    setLiveStatus("recording");
+
+    const combined = () => {
+      const recorded = [...liveParts.current.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, text]) => text)
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      return [originalContent.trim(), recorded].filter(Boolean).join("\\n\\n");
+    };
+
+    const finish = async () => {
+      if (liveSaved.current) return;
+      liveSaved.current = true;
+      setLiveStatus("saving");
+      const finalText = combined();
+      if (!finalText.trim() || finalText === originalContent.trim()) {
+        setLiveStatus("failed");
+        toast.error("No speech was detected. The note was not overwritten.");
+        return;
+      }
+      const noteTitle =
+        originalTitle.trim() ||
+        `Voice note ${new Date().toLocaleString("fa-IR")}`;
+      try {
+        const saved = originalNote
+          ? await client.updateNote(originalNote, noteTitle, finalText)
+          : await client.createNote(noteTitle, finalText);
+        setNote(saved);
+        setTitle(saved.title);
+        setContent(saved.content);
+        setLiveStatus("completed");
+        toast.success(t("notes.saved"));
+        await loadList();
+
+        // Streaming provides a cleaned transcript; after Stop Qwen also
+        // extracts organized note sections, key points and review questions.
+        try {
+          const analyzed = await client.analyzeNote(saved.id);
+          setNote(analyzed);
+          setLiveStatus("completed");
+        } catch (error) {
+          toast.error(t("notes.analysisFailed"), {
+            description: message(error),
+          });
+        }
+      } catch (error) {
+        setLiveStatus("failed");
+        toast.error(t("notes.saveFailed"), { description: message(error) });
+      }
+    };
+
+    const session = new LiveStreamSession(
+      serverUrl,
+      authToken,
+      { mode: "note_taking", language: "fa", tone: "professional", cleanup: true },
+      {
+        state: (state) => {
+          if (state === "completed") {
+            setRecording(false);
+            setLiveLevel(0);
+            void finish();
+          } else if (state === "draining" || state === "reconnecting") {
+            setLiveStatus("draining");
+          } else if (state === "recording") {
+            setLiveStatus("recording");
+          }
+        },
+        result: (result) => {
+          liveParts.current.set(
+            result.sequence,
+            (result.segment.clean_text || result.segment.raw_text).trim(),
+          );
+          setContent(combined());
+          setLivePartial("");
+        },
+        partial: setLivePartial,
+        level: setLiveLevel,
+        error: (error) => {
+          toast.error("Live transcription", { description: error });
+          setLiveStatus("failed");
+        },
+      },
+    );
+    liveSession.current = session;
+    try {
+      await session.start();
+      setRecording(true);
+    } catch (error) {
+      session.dispose();
+      liveSession.current = null;
+      setRecording(false);
+      setLiveStatus("failed");
+      toast.error("Cannot start live recording", { description: message(error) });
+    }
+  };
+
+  const stopLiveNote = async () => {
+    if (!recording || !liveSession.current) return;
+    setRecording(false);
+    setLiveLevel(0);
+    setLiveStatus("draining");
+    try {
+      await liveSession.current.stop();
+    } catch (error) {
+      setLiveStatus("failed");
+      toast.error("Cannot finalize live recording", {
+        description: message(error),
+      });
+    }
   };
 
   const save = async () => {
-    if (!client || !title.trim() || !content.trim() || busy) return;
+    if (!client || !title.trim() || !content.trim() || busy || liveBusy) return;
     setBusy(true);
     try {
       const saved = note
@@ -110,7 +252,7 @@ export function NotesMode() {
   };
 
   const analyze = async () => {
-    if (!client || !note || busy) return;
+    if (!client || !note || busy || liveBusy) return;
     if (title !== note.title || content !== note.content) {
       toast.error(t("notes.saveFirst"));
       return;
@@ -128,7 +270,7 @@ export function NotesMode() {
   };
 
   const remove = async () => {
-    if (!client || !note || busy || !window.confirm(t("notes.deleteConfirm")))
+    if (!client || !note || busy || liveBusy || !window.confirm(t("notes.deleteConfirm")))
       return;
     setBusy(true);
     try {
@@ -251,6 +393,7 @@ export function NotesMode() {
           <button
             type="button"
             onClick={newNote}
+            disabled={liveBusy}
             className="flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-sm"
           >
             <Plus size={16} /> {t("notes.new")}
@@ -260,7 +403,7 @@ export function NotesMode() {
               <button
                 key={item.id}
                 type="button"
-                disabled={busy}
+                disabled={busy || liveBusy}
                 onClick={() => void select(item.id)}
                 className={
                   "text-start rounded-lg p-3 hover:bg-line " +
@@ -302,6 +445,55 @@ export function NotesMode() {
           </div>
         </section>
         <section className="rounded-xl border border-line p-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-3 rounded-xl bg-wash/30 border border-line p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Mic size={17} />
+              Voice note
+            </div>
+            {recording ? (
+              <RecordingPill
+                level={liveLevel}
+                onStop={() => void stopLiveNote()}
+                label="Live note recording"
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!client || busy || liveBusy}
+                onClick={() => void startLiveNote()}
+                className="inline-flex w-fit items-center gap-2 rounded-full bg-logo-primary px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                <Mic size={16} />
+                Start recording
+              </button>
+            )}
+            {livePartial && recording && (
+              <p className="text-sm text-ink-3" dir="auto">
+                {livePartial}
+                <span className="ms-1 animate-pulse">▍</span>
+              </p>
+            )}
+            {liveStatus === "draining" && (
+              <p className="text-sm text-ink-3" role="status">
+                Finishing transcription and Qwen cleanup...
+              </p>
+            )}
+            {liveStatus === "saving" && (
+              <p className="text-sm text-ink-3" role="status">
+                Saving and organizing note...
+              </p>
+            )}
+            {liveStatus === "completed" && (
+              <p className="text-sm text-logo-primary" role="status">
+                Transcription saved. You can edit your note below.
+              </p>
+            )}
+            {liveStatus === "failed" && (
+              <p className="text-sm text-red-500" role="alert">
+                Live transcription was interrupted. Review or save the draft below.
+              </p>
+            )}
+          </div>
           <input
             className="w-full border border-line bg-transparent rounded-lg px-3 py-2 font-semibold"
             placeholder={t("notes.noteTitle")}
@@ -310,6 +502,7 @@ export function NotesMode() {
             onChange={(event) => setTitle(event.target.value)}
           />
           <textarea
+            disabled={liveBusy}
             rows={10}
             className="w-full min-h-40 border border-line rounded-lg bg-transparent px-3 py-2 text-sm resize-y"
             placeholder={t("notes.content")}
@@ -321,7 +514,7 @@ export function NotesMode() {
             <button
               type="button"
               disabled={
-                !client || busy || !dirty || !title.trim() || !content.trim()
+                !client || busy || liveBusy || !dirty || !title.trim() || !content.trim()
               }
               onClick={() => void save()}
               className="flex items-center gap-2 bg-logo-primary text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
@@ -330,7 +523,7 @@ export function NotesMode() {
             </button>
             <button
               type="button"
-              disabled={!client || busy || !note}
+              disabled={!client || busy || liveBusy || !note}
               onClick={() => void analyze()}
               className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
             >
@@ -338,7 +531,7 @@ export function NotesMode() {
             </button>
             <button
               type="button"
-              disabled={!client || busy || !note}
+              disabled={!client || busy || liveBusy || !note}
               onClick={() => void remove()}
               className="flex gap-2 items-center rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50"
             >
