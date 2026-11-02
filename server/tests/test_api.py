@@ -87,3 +87,21 @@ def test_cors_is_restricted(client: TestClient):
         headers={"Origin": "https://malicious.example", "Access-Control-Request-Method": "POST"},
     )
     assert denied.headers.get("access-control-allow-origin") is None
+
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
+def test_local_dev_ui_cors_supports_notes_and_tasks(
+    client: TestClient, method: str
+):
+    response = client.options(
+        "/v1/notes",
+        headers={
+            "Origin": "http://localhost:1420",
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:1420"
+    assert method in response.headers.get("access-control-allow-methods", "")
