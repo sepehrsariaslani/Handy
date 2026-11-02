@@ -19,6 +19,20 @@ export function normalizeServerUrl(value: string): string {
   return url.origin;
 }
 
+/** The only origin allowed to use the existing local API token automatically. */
+export function isLocalAiServer(value: string): boolean {
+  try {
+    const url = new URL(normalizeServerUrl(value));
+    return (
+      url.protocol === "http:" &&
+      ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) &&
+      url.port === "8765"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function loadServerUrl(): string {
   try {
     if (typeof window === "undefined") return DEFAULT_SERVER_URL;
