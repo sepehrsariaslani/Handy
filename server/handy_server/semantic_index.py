@@ -64,21 +64,11 @@ class SemanticIndex:
         with sqlite3.connect(self.db_path) as db:
             # Only completed meetings become memory, and notes are indexed
             # at their source-line granularity.
-            sources = (
-                ("""SELECT 'meeting',s.job_id,s.id,s.text FROM meeting_segments s
-                    JOIN meeting_jobs j ON j.id=s.job_id AND j.status='completed'"""),
-                ("""SELECT 'note',n.id,ns.source_id,ns.text FROM note_sources ns
-                    JOIN notes n ON n.id=ns.note_id"""),
-            )
-            for sql in sources:
+            for kind in ("meeting", "note"):
                 if len(rows) >= limit:
                     break
                 # All missing / changed sources are detected in SQL.
-                query = f"""SELECT x.* FROM ({sql}) x
-                    LEFT JOIN semantic_vectors v
-                     ON v.kind=x." 'meeting'" AND 1=0"""
-                # Explicit aliases avoid placeholder evaluation within SQL.
-                if "meeting_segments" in sql:
+                if kind == "meeting":
                     query = """SELECT 'meeting' AS kind,s.job_id AS document_id,
                         s.id AS source_id,substr(s.text,1,800) AS source_text
                         FROM meeting_segments s
