@@ -21,7 +21,7 @@ class BeginUpload(BaseModel):
     total_bytes: int = Field(gt=44)
     language: str | None = Field(default=None, max_length=35)
     kind: Literal["meeting", "note"] = "meeting"
-    asr_model_id: str | None = Field(default=None, max_length=120, pattern=r"^[A-Za-z0-9_.-]+$")
+    asr_model_id: str | None = Field(default=None, min_length=1, max_length=512)
     title: str | None = Field(default=None, max_length=180)
     meeting_date: date | None = None
 
