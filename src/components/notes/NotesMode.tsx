@@ -553,16 +553,28 @@ export function NotesMode() {
             </div>
             {!recording && (
               <label className="text-xs flex items-center gap-2 text-ink-3">
-                {t("meeting.speechLanguage", { defaultValue: "Recording language" })}
+                {t("meeting.speechLanguage", {
+                  defaultValue: "Recording language",
+                })}
                 <select
                   value={speechLanguage}
                   disabled={liveBusy}
                   onChange={(event) => setSpeechLanguage(event.target.value)}
                   className="border border-line bg-background rounded-lg px-2 py-1"
                 >
-                  <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
-                  <option value="fa">{t("meeting.persianLanguage", { defaultValue: "فارسی (Persian)" })}</option>
-                  <option value="en">{t("meeting.englishLanguage", { defaultValue: "English" })}</option>
+                  <option value="auto">
+                    {t("meeting.autoLanguage", {
+                      defaultValue: "App setting / Auto detect",
+                    })}
+                  </option>
+                  <option value="fa">
+                    {t("meeting.persianLanguage", {
+                      defaultValue: "فارسی (Persian)",
+                    })}
+                  </option>
+                  <option value="en">
+                    {t("meeting.englishLanguage", { defaultValue: "English" })}
+                  </option>
                 </select>
               </label>
             )}

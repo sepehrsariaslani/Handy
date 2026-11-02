@@ -262,9 +262,9 @@ pub fn start_meeting(
                 Some(selected)
             }
         });
-    let language = requested_language
-        .filter(|code| code.len() <= 12
-            && code.chars().all(|c| c.is_ascii_alphabetic() || c == '-'));
+    let language = requested_language.filter(|code| {
+        code.len() <= 12 && code.chars().all(|c| c.is_ascii_alphabetic() || c == '-')
+    });
     let mut info = MeetingInfo {
         id,
         kind,

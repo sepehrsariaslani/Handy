@@ -640,15 +640,27 @@ export const MeetingMode = () => {
                 />
               </label>
               <label className="text-sm flex flex-col gap-1">
-                {t("meeting.speechLanguage", { defaultValue: "Recording language" })}
+                {t("meeting.speechLanguage", {
+                  defaultValue: "Recording language",
+                })}
                 <select
                   value={speechLanguage}
                   onChange={(event) => setSpeechLanguage(event.target.value)}
                   className="border border-line bg-background rounded-lg px-3 py-2"
                 >
-                  <option value="auto">{t("meeting.autoLanguage", { defaultValue: "App setting / Auto detect" })}</option>
-                  <option value="fa">{t("meeting.persianLanguage", { defaultValue: "فارسی (Persian)" })}</option>
-                  <option value="en">{t("meeting.englishLanguage", { defaultValue: "English" })}</option>
+                  <option value="auto">
+                    {t("meeting.autoLanguage", {
+                      defaultValue: "App setting / Auto detect",
+                    })}
+                  </option>
+                  <option value="fa">
+                    {t("meeting.persianLanguage", {
+                      defaultValue: "فارسی (Persian)",
+                    })}
+                  </option>
+                  <option value="en">
+                    {t("meeting.englishLanguage", { defaultValue: "English" })}
+                  </option>
                 </select>
               </label>
             </div>
