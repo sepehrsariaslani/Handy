@@ -255,9 +255,7 @@ export const MeetingMode = () => {
             throw new Error("Incomplete raw transcript page");
           all.push(...page.items);
           offset += page.items.length;
-          const combined = new Map(
-            all.map((part) => [part.id, part] as const),
-          );
+          const combined = new Map(all.map((part) => [part.id, part] as const));
           setJob((current) =>
             current?.id === job.id
               ? {
@@ -902,15 +900,15 @@ export const MeetingMode = () => {
                 (polishedParts.length === 0 ||
                   polishedParts.length <
                     (polishedTotal || job.cleaned_block_count || 0)) && (
-                <button
-                  type="button"
-                  disabled={polishedLoading}
-                  onClick={() => void loadPolished()}
-                  className="w-fit text-sm border border-line rounded-lg px-3 py-2 disabled:opacity-50"
-                >
-                  {t("meeting.showMore")}
-                </button>
-              )}
+                  <button
+                    type="button"
+                    disabled={polishedLoading}
+                    onClick={() => void loadPolished()}
+                    className="w-fit text-sm border border-line rounded-lg px-3 py-2 disabled:opacity-50"
+                  >
+                    {t("meeting.showMore")}
+                  </button>
+                )}
             </section>
           )}
           {job?.insights && (
