@@ -8,7 +8,7 @@ import wave
 
 from .diarization import Diarizer, label_segments
 from .meeting_store import MeetingStore
-from .meeting_analysis import QwenMeetingAnalyzer
+from .meeting_analysis import QwenMeetingAnalyzer, meeting_text_parts
 from .workers import WorkerUnavailable, WorkerFailure
 from .schemas import CleanupRequest, Tone, MeetingAnalysis
 
@@ -169,15 +169,16 @@ class MeetingProcessor:
         length = 0
         cap = min(5500, max(300, self.runtime.settings.max_text_chars))
         for row in utterances:
-            line = row["text"].strip()
-            if not line:
-                continue
-            if current and length + len(line) + 1 > cap:
-                chunks.append("\n".join(current))
-                current = []
-                length = 0
-            current.append(line)
-            length += len(line) + 1
+            # Native Handy returns one utterance per 120s window. A single
+            # utterance may exceed Qwen's cleanup context budget, so split
+            # *within* that text rather than silently dropping its ending.
+            for line in meeting_text_parts(row["text"], max_chars=cap - 1):
+                if current and length + len(line) + 1 > cap:
+                    chunks.append("\n".join(current))
+                    current = []
+                    length = 0
+                current.append(line)
+                length += len(line) + 1
         if current:
             chunks.append("\n".join(current))
 
