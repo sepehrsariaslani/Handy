@@ -199,7 +199,7 @@ class GgufWhisperWorker:
                 text = result["text"]
                 if not isinstance(text, str):
                     raise ValueError("Invalid transcript")
-                rows = result.get("segments", [])
+                rows = result.get("segments") or []
                 if not isinstance(rows, list):
                     raise ValueError("Invalid timestamps")
                 segments = [
