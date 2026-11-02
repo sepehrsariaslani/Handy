@@ -93,6 +93,9 @@ def test_resume_upload_and_deduplicate(tmp_path):
         assert len(job_id) == 32
         assert completed.json()["title"] == "جلسه فروش"
         assert completed.json()["meeting_date"] == "2026-11-02"
+        # Language from the native recording upload must reach the ASR job.
+        from handy_server.meeting_store import MeetingStore
+        assert MeetingStore(config.db_path).get(job_id)["language"] == "fa"
         again = client.post(
             "/v1/meetings/uploads/" + uid + "/finish", headers=AUTH
         )
