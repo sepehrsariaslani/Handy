@@ -118,7 +118,6 @@ pytest -q
 python benchmarks/measure_api.py
 ```
 
-
 ## Phase 3 — live, resumable dictation
 
 The Handy sidebar now has an **opt-in Live** page. Enter the server URL and
@@ -127,9 +126,9 @@ The desktop's original global shortcut and offline transcription remain
 unchanged. This is not yet system-wide live typing/paste (phase 4).
 
 The client captures microphone audio with an AudioWorklet (ScriptProcessor
-fallback), downsamples to 16 kHz mono PCM16 and sends *new*, non-overlapping
+fallback), downsamples to 16 kHz mono PCM16 and sends _new_, non-overlapping
 1–5-second chunks at voice pauses or the five-second boundary. The server
-prepends up to 0.6 seconds of *previous* persisted PCM as recognition context,
+prepends up to 0.6 seconds of _previous_ persisted PCM as recognition context,
 then removes matching repeated words before finalizing the segment. Partial
 raw text is emitted when Whisper finishes a chunk, followed by a final
 committed segment after optional Qwen editing. This is chunked Whisper, not
