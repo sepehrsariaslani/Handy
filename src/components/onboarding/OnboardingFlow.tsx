@@ -54,30 +54,45 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const models = useOnboardingModels(store.languages);
   const currentModel = useModelStore((s) => s.currentModel);
   const selectModel = useModelStore((s) => s.selectModel);
+  const modelsInitialized = useModelStore((s) => s.initialized);
+  const initialDiskPickDone = useRef(false);
 
-  // Once models load: start from an on-disk model if there is one, or flag a
-  // download interrupted by a quit. Reads the store since reset() runs first.
+  // Pick a real local model once the backend's model scan has finished.
+  // Catalog length doesn't change when a Q5 quant becomes available, so
+  // relying on offered.length here could miss the download-state transition.
   useEffect(() => {
-    if (preview || !models.offered.length) return;
-    const { downloadId } = useOnboardingStore.getState();
+    if (preview || !modelsInitialized || initialDiskPickDone.current) return;
+    if (!models.offered.length) return;
+    initialDiskPickDone.current = true;
+
+    const { modelId, downloadId } = useOnboardingStore.getState();
+    const onDisk = models.offered.filter(
+      (m) => models.infoFor(m)?.is_downloaded,
+    );
+    if (onDisk.length) {
+      const selected = models.catalogFor(settings?.selected_model ?? "");
+      const chosen =
+        onDisk.find((m) => m.id === modelId) ??
+        onDisk.find((m) => m.id === selected?.id) ??
+        onDisk.find((m) => m.id === downloadId) ??
+        onDisk.find((m) => models.picks.some((p) => p.model.id === m.id)) ??
+        onDisk[0];
+      // Stale onboarding picks (such as Nemotron from an earlier attempt)
+      // must not force a download when Whisper is already on disk.
+      store.set({
+        modelId: chosen.id,
+        downloadId: chosen.id,
+        downloadFailed: false,
+      });
+      return;
+    }
+
     if (downloadId) {
       const model = models.offered.find((m) => m.id === downloadId);
       if (model && models.downloadState(model).state === "none")
         store.set({ downloadFailed: true });
-      return;
     }
-    const onDisk = models.offered.filter(
-      (m) => models.infoFor(m)?.is_downloaded,
-    );
-    if (!onDisk.length) return;
-    const selected = models.catalogFor(settings?.selected_model ?? "");
-    const chosen =
-      onDisk.find((m) => m.id === selected?.id) ??
-      onDisk.find((m) => models.picks.some((p) => p.model.id === m.id)) ??
-      onDisk[0];
-    store.set({ downloadId: chosen.id });
-    // Decided once the model list is in.
-  }, [models.offered.length]);
+  }, [preview, modelsInitialized, models.offered, models.picks, settings?.selected_model, store]);
 
   // Select the picked model as soon as it's on disk, so Try it can use it.
   const downloaded = models.offered.find((m) => m.id === store.downloadId);
