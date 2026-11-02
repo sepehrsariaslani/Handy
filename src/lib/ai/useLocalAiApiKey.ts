@@ -8,9 +8,7 @@ import { isLocalAiServer } from "./serverConfig";
  * switching to a remote/custom server.
  */
 export function useLocalAiApiKey(serverUrl: string): string {
-  const [local, setLocal] = useState<{ url: string; key: string } | null>(
-    null,
-  );
+  const [local, setLocal] = useState<{ url: string; key: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
