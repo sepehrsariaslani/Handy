@@ -27,7 +27,9 @@ jobs:
         run: python -m pytest -q
       - name: Measure local API overhead
         working-directory: server
-        run: python benchmarks/measure_api.py | tee api-baseline.json
+        run: |
+          set -o pipefail
+          python benchmarks/measure_api.py | tee api-baseline.json
       - name: Upload reproducible benchmark
         uses: actions/upload-artifact@v4
         with:

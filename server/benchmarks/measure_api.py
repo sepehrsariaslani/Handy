@@ -4,12 +4,17 @@ Run after installing server dev dependencies:
   cd server && python benchmarks/measure_api.py
 """
 from pathlib import Path
+import os
 import json
 from statistics import median
 from tempfile import TemporaryDirectory
 from time import perf_counter
 import platform
 import sys
+
+# Importing the Uvicorn app validates its secret; use a test-only key for this
+# in-process benchmark and never read or print production credentials.
+os.environ.setdefault('HANDY_API_KEY', 'benchmark-local-test-only-token-0123456789')
 
 # Run from the server directory (editable install: pip install -e '.[dev]').
 from fastapi.testclient import TestClient
