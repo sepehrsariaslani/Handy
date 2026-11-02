@@ -8,8 +8,9 @@ speaker diarization, cited summaries, decisions and action items.
 ## Operational flow
 
 1. Get recording consent from all participants. Record in Meeting Mode.
-2. Stop the recording and choose **Process**. Handy preserves the original WAV
-   locally even if upload/processing fails.
+2. Give the meeting an optional title/date and press Start. Stop is enough:
+   upload, transcription, Qwen analysis, and evidence-backed task creation run
+   automatically. Handy preserves the original WAV locally if upload fails.
 3. The Rust client requests a resumable upload identified by the meeting's
    local ID. The server returns the previously committed byte offset.
 4. The client PUTs the file in **4 MiB** chunks, then calls **finish**. When
@@ -30,7 +31,9 @@ speaker diarization, cited summaries, decisions and action items.
 8. Qwen3.5-9B generates evidence-linked summaries, decisions, tasks and open
    questions. The model processes batches and hierarchical summaries; invalid
    source IDs are removed. Model output still needs user review.
-9. Handy polls job status, displays the current stage and processed time, and
+9. Handy infers a descriptive title and, only when stated in the transcript,
+   an optional meeting date (otherwise recording date), while preserving explicit user input.
+10. Handy polls job status, displays the current stage and processed time, and
    fetches long transcripts in pages (150 utterances). Clicking evidence
    sources retrieves their original utterance without fetching the whole file.
 
@@ -114,7 +117,7 @@ All endpoints require \`Authorization: Bearer HANDY_API_KEY\`.
 - Jobs are durable in SQLite but processing is performed by the single
   Uvicorn process; use a dedicated worker queue and distributed locking
   before deploying across multiple instances.
-- This phase does not create external TODO tasks or mobile background recording.
+- Internal Handy Tasks are created automatically on successful completion. External TODO tasks and mobile background recording are not supported yet.
   Meeting Mode remains a separate desktop feature.
 
 ## Verification
