@@ -50,6 +50,7 @@ export function NotesMode() {
   const [liveLevel, setLiveLevel] = useState(0);
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [pendingNotes, setPendingNotes] = useState<string[]>([]);
   const [liveStatus, setLiveStatus] = useState<
     "idle" | "recording" | "draining" | "saving" | "completed" | "failed"
   >("idle");
@@ -99,6 +100,8 @@ export function NotesMode() {
     )
       .then((rows) => {
         if (!active) return;
+        setPendingNotes(rows.filter((item) => item.kind === "note" && item.status === "ready" &&
+          !(item as { remote_job_id?: string | null }).remote_job_id).map((item) => item.id));
         const pending = rows.find(
           (item) => item.kind === "note" && item.status === "recording",
         );
@@ -235,11 +238,28 @@ export function NotesMode() {
         apiKey: authToken,
       });
       setJobId(job.id);
+      setPendingNotes((current) => current.filter((id) => id !== info.id));
     } catch (error) {
       setLiveStatus("failed");
       toast.error("Note recording saved but processing did not start", {
         description: message(error),
       });
+    }
+  };
+
+  const retrySavedRecording = async (id: string) => {
+    if (!authToken || liveBusy || busy) return;
+    setEditorExpanded(true);
+    setLiveStatus("saving");
+    try {
+      const job = await invoke<{ id: string }>("submit_meeting", {
+        id, serverUrl, apiKey: authToken,
+      });
+      setJobId(job.id);
+      setPendingNotes((current) => current.filter((item) => item !== id));
+    } catch (error) {
+      setLiveStatus("failed");
+      toast.error("Recording sync failed", { description: message(error) });
     }
   };
 
@@ -373,6 +393,22 @@ export function NotesMode() {
         </section>
       )}
 
+      {!editorExpanded && pendingNotes.length > 0 && (
+        <section className="rounded-xl border border-line p-3 flex flex-col gap-2">
+          <h2 className="text-sm font-medium">
+            {t("notes.pendingRecordings", { defaultValue: "Saved recordings awaiting sync" })}
+          </h2>
+          {pendingNotes.map((id, index) => (
+            <div key={id} className="flex items-center justify-between gap-2 text-sm">
+              <span>{t("notes.voiceTitle")} {index + 1}</span>
+              <button type="button" disabled={!client || busy} onClick={() => void retrySavedRecording(id)}
+                className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-50">
+                {t("meeting.retrySync", { defaultValue: "Resume transcription" })}
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
       {!editorExpanded && (
         <section className="rounded-xl border border-line p-3 flex flex-wrap gap-2 items-end">
           <label className="flex-1 min-w-40 flex flex-col gap-1 text-sm">
