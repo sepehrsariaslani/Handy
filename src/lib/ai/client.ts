@@ -45,6 +45,25 @@ export class HandyAiClient {
     return this.request<AiModelStatus>("/v1/models/status");
   }
 
+  streamState(
+    id: string,
+    afterSequence = -1,
+  ): Promise<{
+    next_sequence: number;
+    pending_sequence: number | null;
+    committed_count: number;
+    results: Array<{
+      type: "final";
+      sequence: number;
+      segment: { raw_text: string; clean_text: string | null; id: string; start: number; end: number; speaker: string | null; final: boolean };
+      language: string | null;
+      warnings: string[];
+    }>;
+  }> {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error("Invalid session ID");
+    return this.request("/v1/sessions/" + id + "/stream-state?after_sequence=" + afterSequence);
+  }
+
   cleanupText(body: AiCleanupRequest): Promise<AiCleanupResponse> {
     return this.request<AiCleanupResponse>("/v1/text/cleanup", {
       method: "POST",

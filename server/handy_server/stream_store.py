@@ -67,6 +67,7 @@ class StreamStore:
                                (session_id,)).fetchone()[0]
         return {
             "next_sequence": int(pending) if pending is not None else int(count),
+            "pending_sequence": int(pending) if pending is not None else None,
             "committed_count": int(all_committed),
             "results": [self._result(row) for row in rows],
         }

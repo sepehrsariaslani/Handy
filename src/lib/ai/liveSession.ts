@@ -138,10 +138,17 @@ export class LiveStreamSession {
       mode: "dictation", tone: this.tone, language: this.language,
     })).id;
     localStorage.setItem(SESSION_ID_KEY, this.session);
+    const pending = await oldestPending(this.session);
     this.next = (await lastSequence(this.session)) + 1;
     if (resumeSession) {
       const old = await this.client.getSession(resumeSession);
       if (old.status === "completed") throw new Error("Session is already completed");
+      const state = await this.client.streamState(resumeSession);
+      if (state.pending_sequence !== null && pending?.sequence !== state.pending_sequence) {
+        throw new Error("The server has an uncommitted chunk missing from local storage");
+      }
+      this.next = Math.max(this.next, state.next_sequence);
+      void this.restoreHistory();
     }
     this.connect();
     const capture = new LiveAudioCapture((audio) => this.enqueue(audio));
@@ -154,6 +161,19 @@ export class LiveStreamSession {
     }
     this.callbacks.state("recording");
     return this.session;
+  }
+
+  private async restoreHistory(): Promise<void> {
+    if (!this.session) return;
+    let after = -1;
+    for (let page = 0; page < 100 && !this.disposed; page++) {
+      const state = await this.client.streamState(this.session, after);
+      for (const row of state.results) {
+        await this.saveResult(row as LiveResult);
+      }
+      if (state.results.length < 100) break;
+      after = state.results[state.results.length - 1].sequence;
+    }
   }
 
   private enqueue(pcm: ArrayBuffer): void {
