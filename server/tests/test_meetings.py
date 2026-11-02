@@ -631,3 +631,109 @@ def test_meeting_qwen_does_not_erase_end_of_native_transcript(tmp_path):
     assert result["status"] == "completed"
     assert result["clean_text"] == source
     assert result["clean_text"].endswith("به مشتری تحویل بدهیم")
+
+
+def test_meeting_speaker_names_and_manual_corrections_are_durable(engine):
+    client, _, settings = engine
+    created = client.post(
+        "/v1/meetings", headers=HEADERS,
+        files={"audio": ("two.wav", wav_data(2), "audio/wav")},
+        data={"meeting_id": "speaker-edit-smoke", "language": "fa"},
+    ).json()
+    job_id = created["id"]
+    finished = wait_for(client, job_id, "completed")
+    uid = finished["transcript"][0]["id"]
+    route = f"/v1/meetings/{job_id}/transcript/{uid}/speaker"
+    assert client.put(route, json={"speaker": "MANUAL_01"}).status_code == 401
+    assert client.put(route, headers=HEADERS,
+                      json={"speaker": "not-a-speaker"}).status_code == 422
+    assert client.put(route, headers=HEADERS,
+                      json={"speaker": "MANUAL_01"}).status_code == 200
+    speaker_route = f"/v1/meetings/{job_id}/speakers/MANUAL_01"
+    assert client.put(speaker_route, headers=HEADERS,
+                      json={"name": "  رضا  "}).status_code == 200
+    saved = client.get(f"/v1/meetings/{job_id}", headers=HEADERS).json()
+    assert saved["transcript"][0]["speaker"] == "MANUAL_01"
+    assert saved["speaker_names"]["MANUAL_01"] == "رضا"
+    reopened = MeetingStore(settings.db_path)
+    assert reopened.response(job_id)["speaker_names"]["MANUAL_01"] == "رضا"
+    assert client.put(speaker_route, headers=HEADERS,
+                      json={"name": ""}).status_code == 200
+    assert reopened.response(job_id)["speaker_names"] == {}
+
+
+def test_word_alignment_preserves_every_original_word_and_splits_speakers():
+    from handy_server.meeting_alignment import split_on_aligned_words
+    raw = {"id": "u00000001", "speaker": "Unknown", "start": 0.0,
+           "end": 3.0, "text": "سلام حالت چطوره؟"}
+    timed_words = [
+        {"word": "سلام", "start": 0.0, "end": 0.8},
+        {"word": "حالت", "start": 1.2, "end": 1.7},
+        {"word": "چطوره؟", "start": 1.8, "end": 2.4},
+    ]
+    turns = [(0.0, 1.0, "SPEAKER_00"), (1.0, 3.0, "SPEAKER_01")]
+    pieces = split_on_aligned_words(raw, timed_words, turns)
+    assert pieces is not None
+    assert [p["speaker"] for p in pieces] == ["SPEAKER_00", "SPEAKER_01"]
+    assert " ".join(p["text"] for p in pieces) == raw["text"]
+    assert pieces[-1]["text"].endswith("چطوره؟")
+    # Missing word timing is not an invitation to fabricate intervals.
+    timed_words[2].pop("end")
+    assert split_on_aligned_words(raw, timed_words, turns) is None
+
+
+def test_long_ambiguous_asr_block_is_not_attributed_to_one_person():
+    from handy_server.diarization import speaker_at
+    turns = [(0, 18, "SPEAKER_00"), (18, 40, "SPEAKER_01")]
+    assert speaker_at(0, 40, turns) == "Unknown"
+    assert speaker_at(19, 23, turns) == "SPEAKER_01"
+
+
+def test_word_alignment_native_windows_are_bounded_and_cover_last_sample():
+    from handy_server.meeting_processing import asr_window_plan, RATE
+    total = 87 * RATE + 125
+    position = 0
+    ends = []
+    while position < total:
+        begin, end = asr_window_plan(position, total, True, aligned=True)
+        assert begin <= position < end <= total
+        assert end - begin <= 40 * RATE
+        ends.append(end)
+        position = end
+    assert ends[-1] == total
+
+
+def test_pyannote_long_meeting_windows_match_voices_conservatively(tmp_path, monkeypatch):
+    import numpy as np
+    from types import SimpleNamespace
+    from handy_server import diarization
+
+    class Annotation:
+        def labels(self):
+            return ["local"]
+        def itertracks(self, yield_label=False):
+            yield SimpleNamespace(start=0.0, end=30.0), None, "local"
+
+    class FakePipeline:
+        def __init__(self):
+            self.calls = []
+        def __call__(self, path):
+            self.calls.append(path)
+            return SimpleNamespace(
+                exclusive_speaker_diarization=Annotation(),
+                speaker_embeddings=np.array([[1.0, 0.0, 0.0]]),
+            )
+
+    path = tmp_path / "test.wav"
+    path.write_bytes(b"pretend wav")
+    # Test the window scheduler without allocating 1,900 seconds of PCM data.
+    monkeypatch.setattr(diarization, "_wav_slice", lambda path, start, end: path)
+    diarizer = diarization.Diarizer(enabled=True, max_hours=2.0)
+    diarizer.pipeline = FakePipeline()
+    turns = diarizer.turns(path, 1850)
+    assert len(diarizer.pipeline.calls) == 3
+    assert len(turns) == 3
+    assert {t[2] for t in turns} == {"SPEAKER_00"}
+    assert turns[0][0] == 0.0
+    assert turns[1][0] == 900.0
+    assert turns[2][0] == 1790.0
