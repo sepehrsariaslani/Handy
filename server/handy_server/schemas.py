@@ -148,6 +148,7 @@ class MeetingUtterance(StrictModel):
 
 class MeetingJob(StrictModel):
     id: str
+    asr_model_id: str | None = None
     kind: Literal["meeting", "note"] = "meeting"
     generated_note_id: str | None = None
     clean_text: str | None = None
