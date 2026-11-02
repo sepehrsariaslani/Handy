@@ -14,8 +14,8 @@ speaker diarization, cited summaries, decisions and action items.
 3. The Rust client requests a resumable upload identified by the meeting's
    local ID. The server returns the previously committed byte offset.
 4. The client PUTs the file in **4 MiB** chunks, then calls **finish**. When
-   network transfer fails or is interrupted, repeating Process continues from
-   the recorded byte offset. Requests and responses use bearer authentication.
+   network transfer fails or is interrupted, reopening the meeting resumes
+   from the recorded byte offset. Requests and responses use bearer authentication.
 5. The server validates WAV headers, channel count, sample rate and <=20-hour
    duration; it queues a SQLite-backed meeting job.
 6. A single API worker processes one **30-second** window with Whisper Large
@@ -32,7 +32,8 @@ speaker diarization, cited summaries, decisions and action items.
    questions. The model processes batches and hierarchical summaries; invalid
    source IDs are removed. Model output still needs user review.
 9. Handy infers a descriptive title and, only when stated in the transcript,
-   an optional meeting date (otherwise recording date), while preserving explicit user input.
+   an optional meeting date (otherwise recording date), while preserving
+   explicit user input.
 10. Handy polls job status, displays the current stage and processed time, and
    fetches long transcripts in pages (150 utterances). Clicking evidence
    sources retrieves their original utterance without fetching the whole file.
@@ -117,7 +118,8 @@ All endpoints require \`Authorization: Bearer HANDY_API_KEY\`.
 - Jobs are durable in SQLite but processing is performed by the single
   Uvicorn process; use a dedicated worker queue and distributed locking
   before deploying across multiple instances.
-- Internal Handy Tasks are created automatically on successful completion. External TODO tasks and mobile background recording are not supported yet.
+- Internal Handy Tasks are created automatically on successful completion.
+  External TODO tasks and mobile background recording are not supported yet.
   Meeting Mode remains a separate desktop feature.
 
 ## Verification
