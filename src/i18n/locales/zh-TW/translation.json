@@ -114,7 +114,8 @@
     "postProcessing": "後處理",
     "history": "歷史紀錄",
     "debug": "偵錯",
-    "about": "關於"
+    "about": "關於",
+    "notes": "Notes"
   },
   "onboarding": {
     "customModelDescription": "官方不支援",
@@ -1068,5 +1069,43 @@
     "learnMore": "如何解決",
     "recorderBlocked": "目前無法錄製快捷鍵——macOS 的 Secure Input 正在阻擋按鍵事件。請先解決 Secure Input 警告。",
     "dismiss": "關閉"
+  },
+  "notes": {
+    "title": "Notes & Knowledge",
+    "intro": "Your private searchable notes, grounded highlights, and meeting summaries. Basic note storage/search uses no GPU.",
+    "serverUrl": "Private Handy server URL",
+    "token": "Server API key (kept in memory only)",
+    "privacy": "Notes are stored on your configured server. A single API key grants access to all notes; do not share it with other people.",
+    "meetingId": "Completed meeting job ID",
+    "meetingPlaceholder": "32-character meeting job ID",
+    "importMeeting": "Import meeting summary",
+    "imported": "Meeting note created",
+    "importFailed": "Could not import meeting",
+    "search": "Search notes (Persian or English)",
+    "new": "New note",
+    "loading": "Loading…",
+    "empty": "No matching notes",
+    "count": "{{count}} notes",
+    "previous": "Previous",
+    "next": "Next",
+    "noteTitle": "Note title",
+    "content": "Write or paste your notes here…",
+    "save": "Save note",
+    "saved": "Note saved",
+    "saveFailed": "Could not save note",
+    "saveFirst": "Save your changes before AI analysis",
+    "analyze": "Organize with Qwen",
+    "analysis": "AI-organized notes",
+    "analyzed": "Note analysis complete",
+    "analysisFailed": "AI analysis unavailable or failed",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this note permanently? The linked original meeting is kept.",
+    "deleted": "Note deleted",
+    "deleteFailed": "Could not delete note",
+    "loadFailed": "Could not load notes",
+    "meetingSource": "Original meeting",
+    "keyPoints": "Key points with sources",
+    "reviewQuestions": "Review questions",
+    "review": "AI may misinterpret details. Check the original source lines before acting on tasks or dates."
   }
 }
