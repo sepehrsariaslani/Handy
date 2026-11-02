@@ -148,6 +148,9 @@ class MeetingUtterance(StrictModel):
 
 class MeetingJob(StrictModel):
     id: str
+    kind: Literal["meeting", "note"] = "meeting"
+    generated_note_id: str | None = None
+    clean_text: str | None = None
     title: str | None = None
     meeting_date: str | None = None
     status: Literal["queued", "processing", "completed", "failed"]
