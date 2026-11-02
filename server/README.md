@@ -9,6 +9,34 @@ incremental streaming is built in phase 3. Full meeting analysis and notes are
 not part of phase 2. Both workers are **disabled by default** and readiness
 reflects actual model availability, not a fake success.
 
+
+## Switch the desktop-selected GGUF model in Meeting and Notes (macOS development)
+
+When launching with `bun run dev:mac`, the app and local API share
+`server/data/asr-models`. For each *new* Meeting or Note, the recorder
+pins Handy's selected and fully downloaded model ID and registers a symlink
+to the existing GGUF file. No additional model download or copy is required.
+The resumable upload pins that ID and the server runs the same selected
+transcribe.cpp GGUF, instead of always using `whisper-large-v3-Q5_K_M.gguf`.
+The chosen model appears under the Meeting details and in backend ASR logs.
+Change the model in Handy settings before starting another recording.
+
+Qwen3-ASR-1.7B GGUF is supported by transcribe.cpp and natively detects
+Persian. It does **not** supply speaker labels or timestamps, so a recording
+will appear as a single time-spanning utterance if the CLI returns only text.
+Whisper retains segment timestamps. A selected GGUF that cannot run with the
+installed `transcribe-cli` produces a visible job failure; it never silently
+falls back to another model. Update the local transcribe.cpp checkout and
+rebuild its CLI if a newly downloaded model is not recognized.
+
+Only the local Mac development server configured with
+`HANDY_GGUF_MODEL_DIR` supports this automatic selected-model registry.
+Existing remote GPU servers still use their explicitly configured model.
+Legacy uploads without an `asr_model_id` continue to use the configured
+default model. Changing the selected model does not retroactively
+retranscribe an existing recording. Do not expose the local model registry
+directory as a network writeable share.
+
 ## Install API and Whisper on a GPU host
 
 Requirements: Python 3.11+, GPU and current NVIDIA driver, CUDA 12 and
