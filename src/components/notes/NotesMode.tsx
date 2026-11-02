@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { HandyAiClient } from "@/lib/ai/client";
 import type { AiNote, AiNoteSummary, AiNotesPage } from "@/lib/ai/contracts";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { useLocalAiApiKey } from "@/lib/ai/useLocalAiApiKey";
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -22,6 +23,8 @@ export function NotesMode() {
   const [serverUrl, setServerUrl] = useState(loadServerUrl);
   // The bearer token is deliberately not written to localStorage.
   const [token, setToken] = useState("");
+  const localApiKey = useLocalAiApiKey(serverUrl);
+  const authToken = token.trim() || localApiKey;
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<AiNoteSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,8 +37,8 @@ export function NotesMode() {
   const [loading, setLoading] = useState(false);
 
   const client = useMemo(
-    () => (token.trim() ? new HandyAiClient(serverUrl, token.trim()) : null),
-    [serverUrl, token],
+    () => (authToken ? new HandyAiClient(serverUrl, authToken) : null),
+    [serverUrl, authToken],
   );
 
   const loadList = useCallback(async () => {
@@ -173,7 +176,10 @@ export function NotesMode() {
             type="url"
             className="border border-line bg-transparent rounded-lg px-3 py-2"
             value={serverUrl}
-            onChange={(event) => setServerUrl(event.target.value)}
+            onChange={(event) => {
+              setServerUrl(event.target.value);
+              setToken("");
+            }}
             onBlur={() => {
               try {
                 setServerUrl(saveServerUrl(serverUrl));
@@ -190,6 +196,7 @@ export function NotesMode() {
             autoComplete="off"
             className="border border-line bg-transparent rounded-lg px-3 py-2"
             value={token}
+            placeholder={localApiKey ? "Local API key detected" : undefined}
             onChange={(event) => setToken(event.target.value)}
           />
         </label>
