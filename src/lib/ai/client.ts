@@ -36,6 +36,7 @@ export class HandyAiClient {
         "AI server request failed (HTTP " + response.status + ")",
       );
     }
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 
