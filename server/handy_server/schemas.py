@@ -162,4 +162,5 @@ class MeetingJob(StrictModel):
     processed_seconds: float = Field(ge=0)
     transcript_count: int = Field(ge=0)
     transcript: list[MeetingUtterance] | None = None
+    speaker_names: dict[str, str] = Field(default_factory=dict)
     insights: MeetingAnalysis | None = None
