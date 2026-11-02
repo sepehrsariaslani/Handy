@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Mic, Square, UploadCloud, RefreshCw, Server, FileAudio, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
+import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
 
 type MeetingInfo = {
   id: string;
@@ -45,7 +46,6 @@ type MeetingJob = {
   insights?: Insights;
 };
 
-const serverDefault = "http://127.0.0.1:8765";
 
 const readError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -64,7 +64,7 @@ export const MeetingMode = () => {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [serverUrl, setServerUrl] = useState(serverDefault);
+  const [serverUrl, setServerUrl] = useState(loadServerUrl);
   // Token stays in memory; never store it in web storage or application logs.
   const [apiKey, setApiKey] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
@@ -272,7 +272,11 @@ export const MeetingMode = () => {
         <label className="flex flex-col gap-1 text-sm">
           {t("meeting.serverUrl")}
           <input className="rounded-lg border border-line bg-transparent px-3 py-2" type="url" value={serverUrl}
-            onChange={(event) => setServerUrl(event.target.value)} />
+            onChange={(event) => setServerUrl(event.target.value)}
+            onBlur={() => {
+              try { setServerUrl(saveServerUrl(serverUrl)); }
+              catch (error) { toast.error(readError(error)); }
+            }} />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           {t("meeting.apiKey")}
