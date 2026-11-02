@@ -24,7 +24,7 @@ def attach_meeting_routes(app: FastAPI, config, store, processor, require_auth):
         meeting_id: str | None = Form(default=None),
         language: str | None = Form(default=None),
         kind: Literal["meeting", "note"] = Form(default="meeting"),
-        asr_model_id: str | None = Form(default=None, max_length=120),
+        asr_model_id: str | None = Form(default=None, min_length=1, max_length=512),
         title: str | None = Form(default=None, max_length=180),
         meeting_date: date | None = Form(default=None),
     ):
