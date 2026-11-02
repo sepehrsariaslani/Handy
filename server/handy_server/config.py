@@ -59,6 +59,8 @@ class Settings:
     diarization_enabled: bool = False
     hf_token: str | None = None
     diarization_max_hours: float = 2.0
+    word_alignment_enabled: bool = False
+    word_alignment_device: str = "cpu"
     semantic_enabled: bool = False
     semantic_model: str = "intfloat/multilingual-e5-small"
 
@@ -108,6 +110,8 @@ class Settings:
             diarization_enabled=enabled("HANDY_DIARIZATION_ENABLED"),
             hf_token=os.getenv("HANDY_HF_TOKEN") or None,
             diarization_max_hours=float(os.getenv("HANDY_DIARIZATION_MAX_HOURS", "2")),
+            word_alignment_enabled=enabled("HANDY_WORD_ALIGNMENT_ENABLED"),
+            word_alignment_device=os.getenv("HANDY_WORD_ALIGNMENT_DEVICE", "cpu").lower(),
             semantic_enabled=enabled("HANDY_SEMANTIC_ENABLED"),
             semantic_model=os.getenv("HANDY_SEMANTIC_MODEL", "intfloat/multilingual-e5-small"),
         )
@@ -133,6 +137,8 @@ class Settings:
             raise ValueError('Invalid meeting duration limit')
         if not 1024 <= settings.max_meeting_bytes <= 3_000_000_000:
             raise ValueError('Invalid meeting byte limit')
+        if settings.word_alignment_device not in {"cpu", "cuda"}:
+            raise ValueError("Invalid HANDY_WORD_ALIGNMENT_DEVICE")
         if not 0.1 <= settings.diarization_max_hours <= 20:
             raise ValueError('Invalid diarization hour cap')
         if not settings.semantic_model or len(settings.semantic_model) > 120:
