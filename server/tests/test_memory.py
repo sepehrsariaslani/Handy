@@ -14,7 +14,7 @@ from handy_server.config import Settings
 from handy_server.main import create_app
 from handy_server.meeting_store import MeetingStore
 from handy_server.notes_store import NoteStore
-from handy_server.memory_store import MemoryStore, tokens
+from handy_server.memory_store import MemoryStore, tokens, infer_utc_dates
 from handy_server.workers import InferenceRuntime, QwenWorker
 
 
@@ -160,3 +160,24 @@ def test_safe_lexical_query_construction():
     assert "علی" in tokens("علی هفته گذشته چه کاری قبول کرد؟")
     assert tokens("آیا به یا از در") == []
     assert MemoryStore is not None
+
+
+
+def test_common_relative_dates_are_utc_and_explicit_filters_win():
+    from datetime import date
+    today = date(2026, 11, 2)  # Monday
+    assert infer_utc_dates("هفته گذشته علی چه کاری کرد؟", None, None, today) == (
+        date(2026, 10, 26), date(2026, 11, 1)
+    )
+    assert infer_utc_dates("What did Ali do last week?", None, None, today) == (
+        date(2026, 10, 26), date(2026, 11, 1)
+    )
+    assert infer_utc_dates("دیروز چه شد؟", None, None, today) == (
+        date(2026, 11, 1), date(2026, 11, 1)
+    )
+    assert infer_utc_dates("this week", None, None, today) == (
+        date(2026, 11, 2), date(2026, 11, 2)
+    )
+    assert infer_utc_dates(
+        "last week", date(2025, 1, 1), None, today
+    ) == (date(2025, 1, 1), None)
