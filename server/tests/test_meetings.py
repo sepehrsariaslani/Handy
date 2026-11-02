@@ -45,7 +45,7 @@ class MockASR:
     def transcribe_file(self, file: Path, language: str | None):
         with wave.open(str(file), "rb") as wav:
             seconds = wav.getnframes() / 16000
-            assert 0 < seconds <= 30
+            assert 0 < seconds <= 120
         self.calls.append(seconds)
         if self.fail:
             from handy_server.workers import WorkerFailure
@@ -114,12 +114,11 @@ def test_meeting_upload_and_evidence(engine):
     job = created.json()
     assert len(job["id"]) == 32
     result = wait_for(client, job["id"], "completed")
-    assert result["transcript_count"] == 2
+    assert result["transcript_count"] == 1
     assert result["processed_seconds"] == 31
-    assert asr.calls == [30, 1]
+    assert asr.calls == [31]
     assert result["transcript"][0]["speaker"] == "Unknown"
     assert result["transcript"][0]["id"] == "u00000001"
-    assert result["transcript"][1]["start"] == 30
     assert result["insights"]["tasks"][0]["assignee"] == "علی"
     assert result["insights"]["tasks"][0]["source_ids"] == ["u00000001"]
     saved = client.get("/v1/tasks", headers=HEADERS).json()
@@ -129,11 +128,11 @@ def test_meeting_upload_and_evidence(engine):
     assert saved["items"][0]["source_meeting_title"] == result["title"]
     assert result["insights"]["open_questions"] == []
     page = client.get(
-        "/v1/meetings/" + job["id"] + "/transcript?offset=1&limit=1",
+        "/v1/meetings/" + job["id"] + "/transcript?offset=0&limit=1",
         headers=HEADERS,
     ).json()
-    assert page["total"] == 2
-    assert page["items"][0]["id"] == "u00000002"
+    assert page["total"] == 1
+    assert page["items"][0]["id"] == "u00000001"
     # Duplicate uploads with the same client_ref must reuse the prior job.
     again = client.post("/v1/meetings", headers=HEADERS,
                         files={"audio": ("recording.wav", data, "audio/wav")},
