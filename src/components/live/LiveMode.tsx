@@ -9,6 +9,7 @@ import {
   type LiveResult,
 } from "@/lib/ai/liveSession";
 import { loadServerUrl, saveServerUrl } from "@/lib/ai/serverConfig";
+import { GlobalDictationSettings } from "./GlobalDictationSettings";
 
 const TONES: AiTone[] = [
   "verbatim",
@@ -126,6 +127,7 @@ export function LiveMode() {
         </h1>
         <p className="text-sm text-ink-3 mt-2">{t("live.description")}</p>
       </div>
+      <GlobalDictationSettings />
       <section className="w-full rounded-xl border border-line p-4 flex flex-col gap-4">
         <label className="text-sm flex flex-col gap-1">
           {t("live.serverUrl")}
