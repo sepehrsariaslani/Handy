@@ -27,8 +27,13 @@ class UploadStore:
                 id TEXT PRIMARY KEY, client_ref TEXT NOT NULL UNIQUE,
                 path TEXT NOT NULL, total_bytes INTEGER NOT NULL,
                 received_bytes INTEGER NOT NULL DEFAULT 0,
-                language TEXT, job_id TEXT, created_at TEXT NOT NULL
+                language TEXT, title TEXT, meeting_date TEXT,
+                job_id TEXT, created_at TEXT NOT NULL
             )""")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(meeting_uploads)")}
+            for column in ("title", "meeting_date"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE meeting_uploads ADD COLUMN {column} TEXT")
 
     def connect(self):
         db = sqlite3.connect(self.db_path, timeout=30)
@@ -40,7 +45,8 @@ class UploadStore:
             row = db.execute("SELECT * FROM meeting_uploads WHERE id=?", (upload_id,)).fetchone()
         return dict(row) if row else None
 
-    def start(self, client_ref: str, total_bytes: int, language: str | None) -> dict:
+    def start(self, client_ref: str, total_bytes: int, language: str | None,
+              title: str | None = None, meeting_date: str | None = None) -> dict:
         with self.lock:
             with self.connect() as db:
                 prior = db.execute("SELECT * FROM meeting_uploads WHERE client_ref=?", (client_ref,)).fetchone()
@@ -52,8 +58,9 @@ class UploadStore:
                 path = self.root / f"{uid}.part"
                 path.touch(exist_ok=False)
                 db.execute("""INSERT INTO meeting_uploads
-                   (id,client_ref,path,total_bytes,language,created_at)
-                   VALUES(?,?,?,?,?,?)""",(uid,client_ref,str(path),total_bytes,language,now()))
+                   (id,client_ref,path,total_bytes,language,title,meeting_date,created_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",(uid,client_ref,str(path),total_bytes,language,
+                                              title,meeting_date,now()))
             return self.get(uid)
 
     def append(self, uid: str, offset: int, data: bytes) -> dict:
