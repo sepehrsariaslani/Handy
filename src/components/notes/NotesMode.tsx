@@ -120,6 +120,7 @@ export function NotesMode() {
     const originalContent = content;
     const originalNote = note;
     const originalTitle = title;
+    setEditorExpanded(true);
     liveParts.current = new Map();
     liveSaved.current = false;
     setLivePartial("");
