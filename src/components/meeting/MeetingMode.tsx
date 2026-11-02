@@ -298,7 +298,7 @@ export const MeetingMode = () => {
           key={id}
           type="button"
           className="text-xs text-logo-primary underline"
-          onClick={() => void jumpToSource(id)}}
+          onClick={() => void jumpToSource(id)}
         >
           {id}
         </button>
