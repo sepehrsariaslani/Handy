@@ -48,4 +48,32 @@ else
   echo "[Handy Dev] Backend log: $ROOT/server/data/handy-dev-backend.log"
 fi
 
+
+# A GGUF startup probe can load the model before Uvicorn begins listening.
+# Do not open the desktop until the authenticated API has finished startup.
+if [[ -n "$BACKEND_PID" ]]; then
+  echo "[Handy Dev] Checking AI backend startup..."
+  READY=false
+  for _ in {1..150}; do
+    if curl -fsS --max-time 3 \
+      -H "Authorization: Bearer $(cat "$KEY_FILE")" \
+      http://127.0.0.1:8765/v1/capabilities >/dev/null 2>&1; then
+      READY=true
+      break
+    fi
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+      echo "[Handy Dev] Local backend stopped unexpectedly." >&2
+      tail -n 25 server/data/handy-dev-backend.log >&2 || true
+      exit 1
+    fi
+    sleep 1
+  done
+  if [[ "$READY" != true ]]; then
+    echo "[Handy Dev] AI backend did not become ready." >&2
+    tail -n 25 server/data/handy-dev-backend.log >&2 || true
+    exit 1
+  fi
+  echo "[Handy Dev] Local AI API is ready."
+fi
+
 bun tauri dev --config src-tauri/tauri.dev.conf.json
