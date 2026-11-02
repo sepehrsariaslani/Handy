@@ -1,0 +1,33 @@
+name: Format meeting feature
+on:
+  push:
+    branches: ["feat/meeting-notes-parity-auto-tasks"]
+    paths:
+      - ".github/workflows/format-meeting-feature.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Format frontend
+        run: bun x prettier --write src/components/meeting/MeetingMode.tsx src/components/tasks/TasksMode.tsx
+      - name: Format Rust
+        run: |
+          rustup component add rustfmt
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+      - name: Commit and push formatting
+        run: |
+          git config user.name 'handy-feature-ci'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add src/components/meeting/MeetingMode.tsx src/components/tasks/TasksMode.tsx src-tauri/src
+          if ! git diff --cached --quiet; then
+            git commit -m 'style: format meeting and task UI with Prettier and Rustfmt'
+            git push origin HEAD:feat/meeting-notes-parity-auto-tasks
+          fi
